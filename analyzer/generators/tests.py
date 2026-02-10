@@ -85,6 +85,9 @@ def _generate_page_render_tests(
     generated: list[Path] = []
 
     for page in discovery.pages:
+        # Skip SPA-detected pages without forms/test_ids (they get E2E tests)
+        if not page.forms and not page.test_ids:
+            continue
         class_name = _to_class_name(page.name)
         rendered = template.render(
             page=page,
@@ -112,6 +115,7 @@ def _generate_form_tests(
     template = env.get_template("test_form.py.j2")
     generated: list[Path] = []
 
+    seen_filenames: set[str] = set()
     for page in discovery.pages:
         for form in page.forms:
             class_name = _to_class_name(form.name) + "Form"
@@ -124,7 +128,13 @@ def _generate_form_tests(
             )
 
             form_module = _to_module_name(form.name)
-            filepath = tests_dir / f"test_{form_module}_form.py"
+            filename = f"test_{form_module}_form.py"
+            # Disambiguate if another page already has a form with the same name
+            if filename in seen_filenames:
+                page_module = _to_module_name(page.name)
+                filename = f"test_{page_module}_{form_module}_form.py"
+            seen_filenames.add(filename)
+            filepath = tests_dir / filename
             filepath.write_text(rendered, encoding="utf-8")
             generated.append(filepath)
 
@@ -264,16 +274,111 @@ def _generate_navigation_tests(
     env: Environment,
 ) -> list[Path]:
     """Generate a single navigation test file covering all pages."""
-    if not discovery.pages:
+    # Only include pages with forms or test_ids (proper router-based pages)
+    eligible = [p for p in discovery.pages if p.forms or p.test_ids]
+    if not eligible:
         return []
 
     template = env.get_template("test_navigation.py.j2")
 
-    rendered = template.render(pages=discovery.pages)
+    rendered = template.render(pages=eligible)
 
     filepath = tests_dir / "test_navigation.py"
     filepath.write_text(rendered, encoding="utf-8")
     return [filepath]
+
+
+# ── E2E Playwright tests ─────────────────────────────────────────────────
+
+
+def _safe_name(text: str) -> str:
+    """Convert text to a safe Python identifier."""
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+
+
+def _generate_e2e_tests(
+    discovery: DiscoveryResult,
+    tests_dir: Path,
+    env: Environment,
+) -> list[Path]:
+    """Generate comprehensive E2E Playwright tests for discovered pages."""
+    if not discovery.pages:
+        return []
+
+    template = env.get_template("test_e2e.py.j2")
+    generated: list[Path] = []
+
+    for page in discovery.pages:
+        if not page.interactive_elements:
+            continue
+
+        # Classify interactive elements
+        buttons: list[dict[str, str]] = []
+        inputs: list[dict[str, str]] = []
+
+        for el in page.interactive_elements:
+            safe = _safe_name(el.text)
+            if el.element_type == "button":
+                text_lower = el.text.lower()
+                category = "action"
+                if text_lower in ("submit", "send", "save", "ok", "go", "confirm"):
+                    category = "submit"
+                elif any(
+                    kw in text_lower
+                    for kw in ("back", "return", "change", "home", "cancel")
+                ):
+                    category = "back"
+                elif any(kw in text_lower for kw in ("hint", "help", "show")):
+                    category = "hint"
+                buttons.append(
+                    {"text": el.text, "safe_name": safe, "category": category}
+                )
+            elif el.element_type == "input":
+                inputs.append({"placeholder": el.text, "safe_name": safe})
+
+        # Determine test structure
+        needs_navigation = bool(inputs) and bool(buttons)
+        has_dynamic_content = bool(discovery.endpoints)
+
+        # Headings
+        headings: list[str] = []
+        if page.title:
+            headings.append(page.title)
+
+        # Classify buttons by role
+        submit_button = next(
+            (b for b in buttons if b["category"] == "submit"), None
+        )
+        back_button = next(
+            (b for b in buttons if b["category"] == "back"), None
+        )
+        hint_buttons = [b for b in buttons if b["category"] == "hint"]
+        secondary_buttons = [
+            b for b in buttons if b["category"] != "back"
+        ]
+
+        class_name = _to_class_name(page.name)
+
+        rendered = template.render(
+            page=page,
+            class_name=class_name,
+            headings=headings,
+            inputs=inputs,
+            buttons=buttons,
+            secondary_buttons=secondary_buttons,
+            submit_button=submit_button,
+            back_button=back_button,
+            hint_buttons=hint_buttons,
+            has_dynamic_content=has_dynamic_content,
+            needs_navigation=needs_navigation,
+        )
+
+        module_name = _to_module_name(page.name)
+        filepath = tests_dir / f"test_{module_name}_e2e.py"
+        filepath.write_text(rendered, encoding="utf-8")
+        generated.append(filepath)
+
+    return generated
 
 
 # ── Public API ────────────────────────────────────────────────────────────
@@ -297,5 +402,6 @@ def generate_tests(
     generated.extend(_generate_form_tests(discovery, tests_dir, env))
     generated.extend(_generate_api_tests(discovery, tests_dir, env))
     generated.extend(_generate_navigation_tests(discovery, tests_dir, env))
+    generated.extend(_generate_e2e_tests(discovery, tests_dir, env))
 
     return generated

@@ -57,6 +57,10 @@ def generate_conftest(
     page_fixtures: list[tuple[str, str, bool]] = []
 
     for page in discovery.pages:
+        # Skip SPA-detected pages without forms/test_ids (they get E2E tests)
+        if not page.forms and not page.test_ids:
+            continue
+
         module = f"pages.{_to_module_name(page.name)}_page"
         cls = _to_class_name(page.name)
         fixture = _fixture_name(page.name)

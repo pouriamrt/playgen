@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from analyzer.generators.conftest_gen import generate_conftest
@@ -35,6 +36,12 @@ def run_generation(
     if not discovery.pages and not discovery.endpoints and not discovery.forms:
         print("Warning: discovery result is empty -- nothing to generate")
         return []
+
+    # Clean previously generated test/page files to avoid stale leftovers
+    for subdir in ("tests", "pages"):
+        target = output_dir / subdir
+        if target.is_dir():
+            shutil.rmtree(target)
 
     print(f"Generating test code in {output_dir}/ ...")
     generated: list[Path] = []

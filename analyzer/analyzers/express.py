@@ -122,16 +122,32 @@ class ExpressAnalyzer(BaseAnalyzer):
     name: str = "express"
     language: str = "javascript"
 
+    def __init__(self, source_dir: str | Path) -> None:
+        super().__init__(source_dir)
+        self._backend_dir: Path | None = None
+
     def detect(self) -> float:
         """Detect Express by inspecting package.json and source files."""
         confidence = 0.0
-        pkg_path = self.source_dir / "package.json"
-        if not pkg_path.exists():
-            return confidence
 
-        try:
-            data = json.loads(self.read_file(pkg_path))
-        except (json.JSONDecodeError, OSError):
+        # Look for package.json at root and common backend subdirectories
+        candidates = [self.source_dir / "package.json"]
+        for subdir_name in ("backend", "server", "api"):
+            candidates.append(self.source_dir / subdir_name / "package.json")
+
+        data = None
+        found_pkg_path: Path | None = None
+        for pkg_path in candidates:
+            if not pkg_path.exists():
+                continue
+            try:
+                data = json.loads(self.read_file(pkg_path))
+                found_pkg_path = pkg_path
+                break
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        if data is None:
             return confidence
 
         all_deps = {
@@ -142,8 +158,11 @@ class ExpressAnalyzer(BaseAnalyzer):
         if "express" in all_deps:
             confidence = 0.6
 
+        if found_pkg_path and found_pkg_path.parent != self.source_dir:
+            self._backend_dir = found_pkg_path.parent
+
         # Check for route files
-        route_files = self.find_files("*route*.*") + self.find_files("*router*.*")
+        route_files = self._find_backend_files("*route*.*") + self._find_backend_files("*router*.*")
         js_ts_routes = [
             f for f in route_files if f.suffix in (".js", ".ts", ".mjs", ".cjs")
         ]
@@ -158,6 +177,17 @@ class ExpressAnalyzer(BaseAnalyzer):
                 break
 
         return min(confidence, 1.0)
+
+    def _find_backend_files(self, pattern: str) -> list[Path]:
+        """Find files, searching the backend subdirectory first if detected."""
+        results: list[Path] = []
+        if self._backend_dir:
+            for path in self._backend_dir.rglob(pattern):
+                if not any(part in self._EXCLUDE_DIRS for part in path.parts):
+                    results.append(path)
+        if not results:
+            results = self.find_files(pattern)
+        return sorted(results)
 
     def analyze_pages(self) -> list:
         """Express is a backend framework -- no frontend pages."""
@@ -241,10 +271,10 @@ class ExpressAnalyzer(BaseAnalyzer):
     def _get_js_files(self) -> list[Path]:
         """Get all JS/TS source files, excluding node_modules."""
         files = (
-            self.find_files("*.js")
-            + self.find_files("*.ts")
-            + self.find_files("*.mjs")
-            + self.find_files("*.cjs")
+            self._find_backend_files("*.js")
+            + self._find_backend_files("*.ts")
+            + self._find_backend_files("*.mjs")
+            + self._find_backend_files("*.cjs")
         )
         return [f for f in files if "node_modules" not in str(f)]
 

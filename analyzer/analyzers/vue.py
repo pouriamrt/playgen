@@ -105,16 +105,32 @@ class VueAnalyzer(BaseAnalyzer):
     name: str = "vue"
     language: str = "javascript"
 
+    def __init__(self, source_dir: str | Path) -> None:
+        super().__init__(source_dir)
+        self._frontend_dir: Path | None = None
+
     def detect(self) -> float:
         """Detect Vue/Nuxt by inspecting package.json dependencies."""
         confidence = 0.0
-        pkg_path = self.source_dir / "package.json"
-        if not pkg_path.exists():
-            return confidence
 
-        try:
-            data = json.loads(self.read_file(pkg_path))
-        except (json.JSONDecodeError, OSError):
+        # Look for package.json at root and common frontend subdirectories
+        candidates = [self.source_dir / "package.json"]
+        for subdir_name in ("frontend", "client", "web", "app", "ui"):
+            candidates.append(self.source_dir / subdir_name / "package.json")
+
+        data = None
+        found_pkg_path: Path | None = None
+        for pkg_path in candidates:
+            if not pkg_path.exists():
+                continue
+            try:
+                data = json.loads(self.read_file(pkg_path))
+                found_pkg_path = pkg_path
+                break
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        if data is None:
             return confidence
 
         all_deps = {
@@ -129,7 +145,21 @@ class VueAnalyzer(BaseAnalyzer):
         if "nuxt" in all_deps or "nuxt3" in all_deps:
             confidence += 0.3
 
+        if found_pkg_path and found_pkg_path.parent != self.source_dir:
+            self._frontend_dir = found_pkg_path.parent
+
         return min(confidence, 1.0)
+
+    def _find_frontend_files(self, pattern: str) -> list[Path]:
+        """Find files, searching the frontend subdirectory first if detected."""
+        results: list[Path] = []
+        if self._frontend_dir:
+            for path in self._frontend_dir.rglob(pattern):
+                if not any(part in self._EXCLUDE_DIRS for part in path.parts):
+                    results.append(path)
+        if not results:
+            results = self.find_files(pattern)
+        return sorted(results)
 
     def analyze_pages(self) -> list[PageDefinition]:
         """Discover pages from Vue Router definitions and Nuxt file-based routing."""
@@ -155,7 +185,7 @@ class VueAnalyzer(BaseAnalyzer):
     def analyze_forms(self) -> list[FormDefinition]:
         """Parse <template> sections of .vue files for form elements."""
         forms: list[FormDefinition] = []
-        vue_files = self.find_files("*.vue")
+        vue_files = self._find_frontend_files("*.vue")
 
         for fpath in vue_files:
             content = self.read_file(fpath)
@@ -219,13 +249,18 @@ class VueAnalyzer(BaseAnalyzer):
 
         # Also search any file matching *router*.js or *router*.ts
         router_files: list[Path] = []
-        for pattern in router_patterns:
-            candidate = self.source_dir / pattern
-            if candidate.exists():
-                router_files.append(candidate)
+        roots = [self.source_dir]
+        if self._frontend_dir:
+            roots.insert(0, self._frontend_dir)
+
+        for root in roots:
+            for pattern in router_patterns:
+                candidate = root / pattern
+                if candidate.exists() and candidate not in router_files:
+                    router_files.append(candidate)
 
         # Broader search for route files
-        for fpath in self.find_files("*router*.js") + self.find_files("*router*.ts"):
+        for fpath in self._find_frontend_files("*router*.js") + self._find_frontend_files("*router*.ts"):
             if fpath not in router_files:
                 router_files.append(fpath)
 
@@ -279,10 +314,15 @@ class VueAnalyzer(BaseAnalyzer):
         self, pages: list[PageDefinition], seen: set[str]
     ) -> None:
         """Scan Nuxt pages/ directory for file-based routes."""
-        for pages_dir_name in ("pages", "src/pages"):
-            pages_dir = self.source_dir / pages_dir_name
-            if pages_dir.is_dir():
-                self._collect_nuxt_file_routes(pages_dir, pages_dir, pages, seen)
+        roots = [self.source_dir]
+        if self._frontend_dir:
+            roots.insert(0, self._frontend_dir)
+
+        for root in roots:
+            for pages_dir_name in ("pages", "src/pages"):
+                pages_dir = root / pages_dir_name
+                if pages_dir.is_dir():
+                    self._collect_nuxt_file_routes(pages_dir, pages_dir, pages, seen)
 
     def _collect_nuxt_file_routes(
         self,

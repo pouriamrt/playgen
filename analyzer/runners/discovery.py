@@ -4,7 +4,44 @@ from pathlib import Path
 
 from analyzer.detector import detect_tech_stack
 from analyzer.mapper import map_frontend_to_backend
-from analyzer.schema import DiscoveryResult
+from analyzer.schema import DiscoveryResult, FormDefinition, PageDefinition
+
+
+def _attach_forms_to_pages(
+    pages: list[PageDefinition], forms: list[FormDefinition]
+) -> None:
+    """Attach discovered forms to pages that share the same source_file.
+
+    Forms discovered by analyze_forms() are returned as a flat list.  The
+    templates iterate ``page.forms``, so we need to copy each form into the
+    matching page.  Forms that don't match any page are left in the top-level
+    list for reference but won't generate page-specific tests.
+    """
+    # Build a lookup from source_file → page
+    page_by_source: dict[str, list[PageDefinition]] = {}
+    for page in pages:
+        if page.source_file:
+            page_by_source.setdefault(page.source_file, []).append(page)
+
+    attached_names: set[tuple[str, str]] = set()
+    for page in pages:
+        for form in page.forms:
+            attached_names.add((page.source_file, form.name))
+
+    for form in forms:
+        if not form.source_file:
+            continue
+        matching_pages = page_by_source.get(form.source_file, [])
+        for page in matching_pages:
+            if (page.source_file, form.name) not in attached_names:
+                page.forms.append(form)
+                attached_names.add((page.source_file, form.name))
+
+    # If no pages matched any form, attach all forms to the first page
+    # (common for SPAs where forms are in child components, not App.jsx)
+    if pages and not any(page.forms for page in pages):
+        for form in forms:
+            pages[0].forms.append(form)
 
 
 def run_discovery(
@@ -36,6 +73,9 @@ def run_discovery(
         all_endpoints.extend(analyzer.analyze_endpoints())
         all_models.extend(analyzer.analyze_models())
         all_forms.extend(analyzer.analyze_forms())
+
+    # 2b. Attach standalone forms to their pages by matching source_file
+    _attach_forms_to_pages(all_pages, all_forms)
 
     # 3. Build discovery result
     discovery = DiscoveryResult(

@@ -64,6 +64,7 @@ markers = [
     "slow: Tests that take longer than usual",
     "error_handling: Error handling and resilience tests",
     "generated: Auto-generated tests from source code analysis",
+    "e2e: End-to-end browser tests using Playwright",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

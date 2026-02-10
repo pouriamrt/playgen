@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m analyzer discover:*)",
+      "Bash(python -m analyzer:*)",
+      "Bash(dir:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python:*)",
+      "Bash(python -c:*)",
+      "Bash(\"C:\\\\Users\\\\pouri\\\\Python\\\\AI\\\\Test\\\\QA_test_suite\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest generated/tests/test_app_e2e.py --collect-only --base-url http://localhost:5173)",
+      "Bash(\"C:\\\\Users\\\\pouri\\\\Python\\\\AI\\\\Test\\\\QA_test_suite\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest generated/tests/ --collect-only --base-url http://localhost:5173)",
+      "Bash(\"C:\\\\Users\\\\pouri\\\\Python\\\\AI\\\\Test\\\\QA_test_suite\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest:*)",
+      "Bash(BASE_URL=http://localhost:5173 API_TEST_URL=http://localhost:8000 \"C:\\\\Users\\\\pouri\\\\Python\\\\AI\\\\Test\\\\QA_test_suite\\\\.venv\\\\Scripts\\\\python.exe\" -m pytest:*)",
+      "Bash(\"C:\\\\Users\\\\pouri\\\\Python\\\\AI\\\\Test\\\\QA_test_suite\\\\.venv\\\\Scripts\\\\python.exe\" -m analyzer pipeline \"C:\\\\Users\\\\pouri\\\\Python\\\\AI\\\\Projects\\\\Fill_blanks_app\" --base-url http://localhost:5173 --api-url http://localhost:8000 --auto)"
+    ]
+  }
+}

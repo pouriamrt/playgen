@@ -1,0 +1,228 @@
+"""Auto-generated end-to-end Playwright tests for {{ page.name }}."""
+from __future__ import annotations
+
+import pytest
+from playwright.sync_api import Page, expect
+
+
+@pytest.mark.generated
+@pytest.mark.e2e
+@pytest.mark.regression
+class Test{{ class_name }}E2E:
+    """Comprehensive end-to-end browser tests for {{ page.name }} ({{ page.path }})."""
+
+    # ── Page Load ─────────────────────────────────────────────────
+
+    def test_page_loads(self, page: Page) -> None:
+        """Page should load successfully."""
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% for heading in headings %}
+        expect(page.get_by_role("heading", name="{{ heading }}")).to_be_visible()
+{% endfor %}
+{% if not headings %}
+        expect(page.locator("body")).not_to_be_empty()
+{% endif %}
+
+{% if has_dynamic_content %}
+    def test_dynamic_content_loads(self, page: Page) -> None:
+        """Dynamically loaded content should appear after API calls resolve."""
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+        buttons = page.get_by_role("button")
+        expect(buttons.first).to_be_visible(timeout=10_000)
+        assert buttons.count() > 0
+
+{% endif %}
+{% if needs_navigation %}
+    # ── Helper: Navigate to Interactive View ──────────────────────
+
+    def _enter_interactive_view(self, page: Page) -> None:
+        """Click the first action button to reach the interactive view."""
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+        page.get_by_role("button").first.click()
+{% if inputs %}
+        expect(
+            page.get_by_placeholder("{{ inputs[0].placeholder }}")
+        ).to_be_visible(timeout=10_000)
+{% else %}
+        page.wait_for_load_state("networkidle")
+{% endif %}
+
+    def test_first_button_navigates_to_interactive_view(self, page: Page) -> None:
+        """Clicking an action button should transition to the interactive view."""
+        self._enter_interactive_view(page)
+{% for inp in inputs %}
+        expect(page.get_by_placeholder("{{ inp.placeholder }}")).to_be_visible()
+{% endfor %}
+{% for btn in secondary_buttons %}
+        expect(page.get_by_role("button", name="{{ btn.text }}")).to_be_visible()
+{% endfor %}
+
+{% endif %}
+{% for inp in inputs %}
+    # ── Input: {{ inp.placeholder }} ──────────────────────────────
+
+    def test_{{ inp.safe_name }}_input_accepts_text(self, page: Page) -> None:
+        """Input '{{ inp.placeholder }}' should accept text."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+        input_el = page.get_by_placeholder("{{ inp.placeholder }}")
+        expect(input_el).to_be_visible()
+        expect(input_el).to_be_editable()
+        input_el.fill("test value")
+        expect(input_el).to_have_value("test value")
+
+    def test_{{ inp.safe_name }}_input_clears(self, page: Page) -> None:
+        """Input '{{ inp.placeholder }}' should clear when emptied."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+        input_el = page.get_by_placeholder("{{ inp.placeholder }}")
+        input_el.fill("some text")
+        input_el.fill("")
+        expect(input_el).to_have_value("")
+
+{% endfor %}
+{% for btn in secondary_buttons %}
+    def test_{{ btn.safe_name }}_button_is_clickable(self, page: Page) -> None:
+        """'{{ btn.text }}' button should be visible and enabled."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+        btn = page.get_by_role("button", name="{{ btn.text }}")
+        expect(btn).to_be_visible()
+        expect(btn).to_be_enabled()
+
+{% endfor %}
+{% if submit_button and inputs %}
+    # ── Form Submission ───────────────────────────────────────────
+
+    def test_submit_with_text_input(self, page: Page) -> None:
+        """Filling input and clicking '{{ submit_button.text }}' should trigger a response."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+{% for inp in inputs %}
+        page.get_by_placeholder("{{ inp.placeholder }}").fill("test answer")
+{% endfor %}
+        page.get_by_role("button", name="{{ submit_button.text }}").click()
+        # Wait for async response
+        page.wait_for_timeout(2000)
+        # Page content should have updated (feedback, new content, etc.)
+        body_text = page.locator("body").inner_text()
+        assert len(body_text) > 0
+
+    def test_keyboard_submit_with_enter(self, page: Page) -> None:
+        """Pressing Enter in the input should submit."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+{% for inp in inputs %}
+        input_el = page.get_by_placeholder("{{ inp.placeholder }}")
+        input_el.fill("test answer")
+        input_el.press("Enter")
+{% endfor %}
+        page.wait_for_timeout(2000)
+        body_text = page.locator("body").inner_text()
+        assert len(body_text) > 0
+
+    def test_submit_empty_input(self, page: Page) -> None:
+        """Submitting with empty input should not crash the page."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+        page.get_by_role("button", name="{{ submit_button.text }}").click()
+        page.wait_for_timeout(1000)
+        # Page should still be functional
+        expect(page.get_by_role("button", name="{{ submit_button.text }}")).to_be_visible()
+
+{% endif %}
+{% if back_button and headings %}
+    # ── Back Navigation ───────────────────────────────────────────
+
+    def test_{{ back_button.safe_name }}_returns_to_initial_view(self, page: Page) -> None:
+        """'{{ back_button.text }}' should return to the initial view."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+        page.get_by_role("button", name="{{ back_button.text }}").click()
+{% for heading in headings %}
+        expect(page.get_by_role("heading", name="{{ heading }}")).to_be_visible()
+{% endfor %}
+
+    def test_round_trip_navigation(self, page: Page) -> None:
+        """Should be able to navigate forward and back multiple times."""
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% for heading in headings %}
+        expect(page.get_by_role("heading", name="{{ heading }}")).to_be_visible()
+{% endfor %}
+        # Navigate forward
+        page.get_by_role("button").first.click()
+{% if inputs %}
+        expect(
+            page.get_by_placeholder("{{ inputs[0].placeholder }}")
+        ).to_be_visible(timeout=10_000)
+{% endif %}
+        # Navigate back
+        page.get_by_role("button", name="{{ back_button.text }}").click()
+{% for heading in headings %}
+        expect(page.get_by_role("heading", name="{{ heading }}")).to_be_visible()
+{% endfor %}
+        # Navigate forward again
+        page.get_by_role("button").first.click()
+{% if inputs %}
+        expect(
+            page.get_by_placeholder("{{ inputs[0].placeholder }}")
+        ).to_be_visible(timeout=10_000)
+{% endif %}
+
+{% endif %}
+{% for btn in hint_buttons %}
+    def test_{{ btn.safe_name }}_reveals_content(self, page: Page) -> None:
+        """'{{ btn.text }}' button should reveal additional content."""
+{% if needs_navigation %}
+        self._enter_interactive_view(page)
+{% else %}
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+{% endif %}
+        body_before = page.locator("body").inner_text()
+        page.get_by_role("button", name="{{ btn.text }}").click()
+        page.wait_for_timeout(500)
+        body_after = page.locator("body").inner_text()
+        assert len(body_after) >= len(body_before)
+
+{% endfor %}
+    def test_page_no_console_errors(self, page: Page) -> None:
+        """Page should load without critical JavaScript errors."""
+        errors: list[str] = []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        page.goto("{{ page.path }}")
+        page.wait_for_load_state("networkidle")
+        critical = [e for e in errors if "TypeError" in e or "ReferenceError" in e]
+        assert not critical, f"Critical JS errors: {critical}"

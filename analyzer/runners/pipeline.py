@@ -55,6 +55,7 @@ def run_pipeline(
             return 1
 
         env = os.environ.copy()
+        env["BASE_URL"] = base_url
         if api_url:
             env["API_TEST_URL"] = api_url
         env["HEADLESS"] = "false" if headed else "true"

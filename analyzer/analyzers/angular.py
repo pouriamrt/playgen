@@ -108,16 +108,32 @@ class AngularAnalyzer(BaseAnalyzer):
     name: str = "angular"
     language: str = "typescript"
 
+    def __init__(self, source_dir: str | Path) -> None:
+        super().__init__(source_dir)
+        self._frontend_dir: Path | None = None
+
     def detect(self) -> float:
         """Detect Angular by inspecting package.json and angular.json."""
         confidence = 0.0
-        pkg_path = self.source_dir / "package.json"
-        if not pkg_path.exists():
-            return confidence
 
-        try:
-            data = json.loads(self.read_file(pkg_path))
-        except (json.JSONDecodeError, OSError):
+        # Look for package.json at root and common frontend subdirectories
+        candidates = [self.source_dir / "package.json"]
+        for subdir_name in ("frontend", "client", "web", "app", "ui"):
+            candidates.append(self.source_dir / subdir_name / "package.json")
+
+        data = None
+        found_pkg_path: Path | None = None
+        for pkg_path in candidates:
+            if not pkg_path.exists():
+                continue
+            try:
+                data = json.loads(self.read_file(pkg_path))
+                found_pkg_path = pkg_path
+                break
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        if data is None:
             return confidence
 
         all_deps = {
@@ -128,10 +144,26 @@ class AngularAnalyzer(BaseAnalyzer):
         if "@angular/core" in all_deps:
             confidence = 0.7
 
-        if (self.source_dir / "angular.json").exists():
+        # Check for angular.json in root or frontend subdir
+        frontend_root = found_pkg_path.parent if found_pkg_path else self.source_dir
+        if (frontend_root / "angular.json").exists() or (self.source_dir / "angular.json").exists():
             confidence += 0.3
 
+        if found_pkg_path and found_pkg_path.parent != self.source_dir:
+            self._frontend_dir = found_pkg_path.parent
+
         return min(confidence, 1.0)
+
+    def _find_frontend_files(self, pattern: str) -> list[Path]:
+        """Find files, searching the frontend subdirectory first if detected."""
+        results: list[Path] = []
+        if self._frontend_dir:
+            for path in self._frontend_dir.rglob(pattern):
+                if not any(part in self._EXCLUDE_DIRS for part in path.parts):
+                    results.append(path)
+        if not results:
+            results = self.find_files(pattern)
+        return sorted(results)
 
     def analyze_pages(self) -> list[PageDefinition]:
         """Discover pages from Angular routing modules and standalone route files."""
@@ -139,18 +171,22 @@ class AngularAnalyzer(BaseAnalyzer):
         seen_paths: set[str] = set()
 
         # Find routing module files
-        routing_files = self.find_files("*-routing.module.ts") + self.find_files(
+        routing_files = self._find_frontend_files("*-routing.module.ts") + self._find_frontend_files(
             "*routing.module.ts"
         )
 
         # Also check standalone route files (Angular 14+)
-        for pattern in ("app.routes.ts", "src/app/app.routes.ts"):
-            candidate = self.source_dir / pattern
-            if candidate.exists() and candidate not in routing_files:
-                routing_files.append(candidate)
+        roots = [self.source_dir]
+        if self._frontend_dir:
+            roots.insert(0, self._frontend_dir)
+        for root in roots:
+            for pattern in ("app.routes.ts", "src/app/app.routes.ts"):
+                candidate = root / pattern
+                if candidate.exists() and candidate not in routing_files:
+                    routing_files.append(candidate)
 
         # Broader search for route definitions
-        for fpath in self.find_files("*.routes.ts"):
+        for fpath in self._find_frontend_files("*.routes.ts"):
             if fpath not in routing_files:
                 routing_files.append(fpath)
 
@@ -219,7 +255,7 @@ class AngularAnalyzer(BaseAnalyzer):
     def analyze_forms(self) -> list[FormDefinition]:
         """Parse Angular .html template files for form elements."""
         forms: list[FormDefinition] = []
-        html_files = self.find_files("*.component.html") + self.find_files("*.html")
+        html_files = self._find_frontend_files("*.component.html") + self._find_frontend_files("*.html")
         seen_files: set[str] = set()
 
         for fpath in html_files:

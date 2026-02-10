@@ -168,6 +168,7 @@ _FETCH_OPTIONS_PATTERN = re.compile(
 def _match_by_fetch_references(
     pages: list[PageDefinition],
     endpoints: list[EndpointDefinition],
+    source_dir: str = "",
 ) -> list[FrontendBackendMapping]:
     """Scan source files associated with pages for fetch/axios calls."""
     mappings: list[FrontendBackendMapping] = []
@@ -175,11 +176,16 @@ def _match_by_fetch_references(
     ep_paths = {_normalize_path(ep.path): ep for ep in endpoints}
     ep_paths_wild = {_strip_param_segments(_normalize_path(ep.path)): ep for ep in endpoints}
 
+    base_dir = Path(source_dir) if source_dir else None
+
     for page in pages:
         if not page.source_file:
             continue
 
         source_path = Path(page.source_file)
+        # Resolve relative paths against the project source directory
+        if not source_path.is_absolute() and base_dir:
+            source_path = base_dir / source_path
         if not source_path.is_file():
             continue
 
@@ -250,7 +256,9 @@ def map_frontend_to_backend(
     all_mappings.extend(_match_by_url(discovery.pages, discovery.endpoints))
     all_mappings.extend(_match_by_convention(discovery.pages, discovery.endpoints))
     all_mappings.extend(
-        _match_by_fetch_references(discovery.pages, discovery.endpoints)
+        _match_by_fetch_references(
+            discovery.pages, discovery.endpoints, discovery.source_dir
+        )
     )
 
     return _deduplicate(all_mappings)

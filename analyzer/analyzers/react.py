@@ -49,6 +49,16 @@ _ROUTE_V6_REV_RE = re.compile(
     r"""<Route\s[^>]*?element\s*=\s*\{<(\w+)[^>]*?path\s*=\s*["']([^"']+)["']""",
     re.DOTALL,
 )
+# React Router v6.4+ createBrowserRouter([{ path: '/', element: <Comp /> }])
+_CREATE_ROUTER_ROUTE_RE = re.compile(
+    r"""\{\s*[^}]*?path\s*:\s*["']([^"']+)["'][^}]*?element\s*:\s*<(\w+)""",
+    re.DOTALL,
+)
+# Reversed: element before path
+_CREATE_ROUTER_ROUTE_REV_RE = re.compile(
+    r"""\{\s*[^}]*?element\s*:\s*<(\w+)[^}]*?path\s*:\s*["']([^"']+)["']""",
+    re.DOTALL,
+)
 
 # Regex for <form ...>...</form> blocks
 _FORM_RE = re.compile(r"<form\b([^>]*)>(.*?)</form>", re.DOTALL | re.IGNORECASE)
@@ -68,6 +78,17 @@ _RHF_REGISTER_RE = re.compile(
 
 # HTML attribute extraction
 _ATTR_RE = re.compile(r"""(\w[\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|\{([^}]*)\})""")
+
+# Patterns for extracting interactive elements from JSX (SPA support)
+_JSX_BUTTON_TEXT_RE = re.compile(
+    r">\s*([A-Za-z][A-Za-z0-9 !?.]+?)\s*</button>",
+    re.IGNORECASE,
+)
+_JSX_PLACEHOLDER_RE = re.compile(r'placeholder\s*=\s*"([^"]*)"')
+_JSX_HEADING_RE = re.compile(
+    r"<h([1-6])[^>]*>\s*([^<{]+?)\s*</h\1>",
+    re.IGNORECASE,
+)
 
 # Submit button patterns
 _SUBMIT_BTN_RE = re.compile(
@@ -107,16 +128,33 @@ class ReactAnalyzer(BaseAnalyzer):
     name: str = "react"
     language: str = "javascript"
 
+    def __init__(self, source_dir: str | Path) -> None:
+        super().__init__(source_dir)
+        # Set during detect() if package.json is found in a subdirectory
+        self._frontend_dir: Path | None = None
+
     def detect(self) -> float:
         """Detect React/Next.js by inspecting package.json dependencies."""
         confidence = 0.0
-        pkg_path = self.source_dir / "package.json"
-        if not pkg_path.exists():
-            return confidence
 
-        try:
-            data = json.loads(self.read_file(pkg_path))
-        except (json.JSONDecodeError, OSError):
+        # Look for package.json at root and common frontend subdirectories
+        candidates = [self.source_dir / "package.json"]
+        for subdir_name in ("frontend", "client", "web", "app", "ui"):
+            candidates.append(self.source_dir / subdir_name / "package.json")
+
+        data = None
+        found_pkg_path: Path | None = None
+        for pkg_path in candidates:
+            if not pkg_path.exists():
+                continue
+            try:
+                data = json.loads(self.read_file(pkg_path))
+                found_pkg_path = pkg_path
+                break
+            except (json.JSONDecodeError, OSError):
+                continue
+
+        if data is None:
             return confidence
 
         all_deps = {
@@ -131,10 +169,25 @@ class ReactAnalyzer(BaseAnalyzer):
         if "next" in all_deps:
             confidence += 0.3
 
+        # Remember the frontend directory if it's a subdirectory
+        if found_pkg_path and found_pkg_path.parent != self.source_dir:
+            self._frontend_dir = found_pkg_path.parent
+
         return min(confidence, 1.0)
 
+    def _find_frontend_files(self, pattern: str) -> list[Path]:
+        """Find files, searching the frontend subdirectory first if detected."""
+        results: list[Path] = []
+        if self._frontend_dir:
+            for path in self._frontend_dir.rglob(pattern):
+                if not any(part in self._EXCLUDE_DIRS for part in path.parts):
+                    results.append(path)
+        if not results:
+            results = self.find_files(pattern)
+        return sorted(results)
+
     def analyze_pages(self) -> list[PageDefinition]:
-        """Discover pages from React Router routes and Next.js file-based routing."""
+        """Discover pages from React Router routes, Next.js routing, or SPA root."""
         pages: list[PageDefinition] = []
         seen_paths: set[str] = set()
 
@@ -143,6 +196,10 @@ class ReactAnalyzer(BaseAnalyzer):
 
         # Scan for Next.js file-based routing
         self._scan_nextjs_pages(pages, seen_paths)
+
+        # Fallback for SPAs without a router -- detect root App component
+        if not pages:
+            self._scan_spa_root(pages, seen_paths)
 
         return pages
 
@@ -157,9 +214,9 @@ class ReactAnalyzer(BaseAnalyzer):
     def analyze_forms(self) -> list[FormDefinition]:
         """Scan JSX/TSX files for form elements."""
         forms: list[FormDefinition] = []
-        files = self.find_files("*.jsx") + self.find_files("*.tsx")
+        files = self._find_frontend_files("*.jsx") + self._find_frontend_files("*.tsx")
         # Also scan .js/.ts files that may contain JSX
-        files += self.find_files("*.js") + self.find_files("*.ts")
+        files += self._find_frontend_files("*.js") + self._find_frontend_files("*.ts")
         seen: set[str] = set()
 
         for fpath in files:
@@ -231,14 +288,18 @@ class ReactAnalyzer(BaseAnalyzer):
     ) -> None:
         """Scan JS/JSX/TS/TSX files for React Router <Route> definitions."""
         files = (
-            self.find_files("*.jsx")
-            + self.find_files("*.tsx")
-            + self.find_files("*.js")
-            + self.find_files("*.ts")
+            self._find_frontend_files("*.jsx")
+            + self._find_frontend_files("*.tsx")
+            + self._find_frontend_files("*.js")
+            + self._find_frontend_files("*.ts")
         )
         for fpath in files:
             content = self.read_file(fpath)
-            if not content or "Route" not in content:
+            if not content:
+                continue
+            has_route = "Route" in content
+            has_create_router = "createBrowserRouter" in content or "createHashRouter" in content
+            if not has_route and not has_create_router:
                 continue
 
             rel = self.relative_path(fpath)
@@ -299,21 +360,54 @@ class ReactAnalyzer(BaseAnalyzer):
                         )
                     )
 
+            # v6.4+ createBrowserRouter / createHashRouter object syntax
+            for m in _CREATE_ROUTER_ROUTE_RE.finditer(content):
+                path, component = m.group(1), m.group(2)
+                if path not in seen:
+                    seen.add(path)
+                    pages.append(
+                        PageDefinition(
+                            name=_component_to_name(component),
+                            path=path,
+                            component=component,
+                            source_file=rel,
+                        )
+                    )
+
+            for m in _CREATE_ROUTER_ROUTE_REV_RE.finditer(content):
+                component, path = m.group(1), m.group(2)
+                if path not in seen:
+                    seen.add(path)
+                    pages.append(
+                        PageDefinition(
+                            name=_component_to_name(component),
+                            path=path,
+                            component=component,
+                            source_file=rel,
+                        )
+                    )
+
     def _scan_nextjs_pages(
         self, pages: list[PageDefinition], seen: set[str]
     ) -> None:
         """Scan Next.js pages/ or app/ directories for file-based routes."""
-        # Next.js pages directory
-        for pages_dir_name in ("pages", "src/pages"):
-            pages_dir = self.source_dir / pages_dir_name
-            if pages_dir.is_dir():
-                self._collect_nextjs_file_routes(pages_dir, pages_dir, pages, seen)
+        # Search in both root and the detected frontend subdirectory
+        roots = [self.source_dir]
+        if self._frontend_dir:
+            roots.insert(0, self._frontend_dir)
 
-        # Next.js app directory (App Router)
-        for app_dir_name in ("app", "src/app"):
-            app_dir = self.source_dir / app_dir_name
-            if app_dir.is_dir():
-                self._collect_nextjs_app_routes(app_dir, app_dir, pages, seen)
+        for root in roots:
+            # Next.js pages directory
+            for pages_dir_name in ("pages", "src/pages"):
+                pages_dir = root / pages_dir_name
+                if pages_dir.is_dir():
+                    self._collect_nextjs_file_routes(pages_dir, pages_dir, pages, seen)
+
+            # Next.js app directory (App Router)
+            for app_dir_name in ("app", "src/app"):
+                app_dir = root / app_dir_name
+                if app_dir.is_dir():
+                    self._collect_nextjs_app_routes(app_dir, app_dir, pages, seen)
 
     def _collect_nextjs_file_routes(
         self,
@@ -498,3 +592,88 @@ class ReactAnalyzer(BaseAnalyzer):
                 action="submit",
             )
         return None
+
+    # ------------------------------------------------------------------
+    # SPA (single-page app without router) helpers
+    # ------------------------------------------------------------------
+
+    def _scan_spa_root(
+        self, pages: list[PageDefinition], seen: set[str]
+    ) -> None:
+        """For SPAs without a router, find the App component as the root page."""
+        app_files: list[Path] = []
+        for pattern in ("App.jsx", "App.tsx"):
+            app_files.extend(self._find_frontend_files(pattern))
+
+        if not app_files:
+            return
+
+        app_file = app_files[0]
+        content = self.read_file(app_file)
+        if not content:
+            return
+
+        rel = self.relative_path(app_file)
+
+        # Extract interactive elements (buttons, inputs)
+        elements = self._extract_jsx_interactive_elements(content)
+
+        # Extract heading text for title
+        headings = self._extract_jsx_headings(content)
+        title = headings[0] if headings else ""
+
+        if "/" not in seen:
+            seen.add("/")
+            pages.append(
+                PageDefinition(
+                    name="App",
+                    path="/",
+                    title=title,
+                    component="App",
+                    source_file=rel,
+                    interactive_elements=elements,
+                )
+            )
+
+    def _extract_jsx_interactive_elements(
+        self, content: str
+    ) -> list[InteractiveElement]:
+        """Extract buttons and inputs from JSX, even outside <form> tags."""
+        elements: list[InteractiveElement] = []
+        seen_text: set[str] = set()
+
+        # Buttons with static text
+        for m in _JSX_BUTTON_TEXT_RE.finditer(content):
+            text = m.group(1).strip()
+            if text and text not in seen_text:
+                seen_text.add(text)
+                elements.append(
+                    InteractiveElement(
+                        element_type="button",
+                        text=text,
+                        action="click",
+                    )
+                )
+
+        # Inputs with placeholder
+        for m in _JSX_PLACEHOLDER_RE.finditer(content):
+            placeholder = m.group(1).strip()
+            if placeholder and placeholder not in seen_text:
+                seen_text.add(placeholder)
+                elements.append(
+                    InteractiveElement(
+                        element_type="input",
+                        text=placeholder,
+                    )
+                )
+
+        return elements
+
+    def _extract_jsx_headings(self, content: str) -> list[str]:
+        """Extract static heading text from JSX."""
+        headings: list[str] = []
+        for m in _JSX_HEADING_RE.finditer(content):
+            text = m.group(2).strip()
+            if text and text not in headings:
+                headings.append(text)
+        return headings

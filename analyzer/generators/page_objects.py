@@ -114,6 +114,10 @@ def generate_page_objects(
     generated: list[Path] = []
 
     for page in discovery.pages:
+        # Skip SPA-detected pages without forms/test_ids (they get E2E tests)
+        if not page.forms and not page.test_ids:
+            continue
+
         class_name = _to_class_name(page.name)
         module_name = _to_module_name(page.name)
         selectors = _build_selectors(page)
