@@ -27,4 +27,5 @@ def load_all_analyzers() -> None:
     import analyzer.analyzers.fastapi  # noqa: F401
     import analyzer.analyzers.flask  # noqa: F401
     import analyzer.analyzers.react  # noqa: F401
+    import analyzer.analyzers.nextjs  # noqa: F401
     import analyzer.analyzers.vue  # noqa: F401

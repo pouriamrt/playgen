@@ -162,12 +162,13 @@ class ReactAnalyzer(BaseAnalyzer):
             **data.get("devDependencies", {}),
         }
 
+        if "next" in all_deps:
+            return 0.0  # Defer to NextjsAnalyzer
+
         if "react" in all_deps:
             confidence = 0.5
         if "react-router-dom" in all_deps:
             confidence += 0.2
-        if "next" in all_deps:
-            confidence += 0.3
 
         # Remember the frontend directory if it's a subdirectory
         if found_pkg_path and found_pkg_path.parent != self.source_dir:
