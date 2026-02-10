@@ -22,10 +22,12 @@ dependencies = [
     "pytest-retry>=1.6.0",
     "psycopg2-binary>=2.9.11",
     "psycopg>=3.3.2",
+    "pydantic>=2.0.0",
+    "jinja2>=3.1.0",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["config", "utils", "pages"]
+packages = ["config", "utils", "pages", "analyzer"]
 
 [dependency-groups]
 dev = [
@@ -61,6 +63,7 @@ markers = [
     "responsive: Responsive design and viewport tests",
     "slow: Tests that take longer than usual",
     "error_handling: Error handling and resilience tests",
+    "generated: Auto-generated tests from source code analysis",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import pytest
+
+from {{ page_object_module }} import {{ page_object_class }}
+
+
+@pytest.mark.generated
+@pytest.mark.forms
+@pytest.mark.regression
+class Test{{ class_name }}:
+    """Tests for the {{ form.name }} form on {{ page.name }}."""
+
+    def test_form_fields_visible(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """All form fields should be visible on the page."""
+        page_obj = {{ page_object_class }}({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        page_obj.navigate()
+{% for field in form.fields %}
+{% if field.test_id %}
+        assert page_obj.get_by_test_id("{{ field.test_id }}").is_visible()
+{% elif field.selector %}
+        assert page_obj.is_visible("{{ field.selector }}")
+{% else %}
+        assert page_obj.is_visible(page_obj.{{ field.name | upper }})
+{% endif %}
+{% endfor %}
+
+    def test_form_submit_with_valid_data(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """Submitting the form with valid data should succeed."""
+        page_obj = {{ page_object_class }}({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        page_obj.navigate()
+{% for field in form.fields %}
+{% if field.field_type.value == "email" %}
+        page_obj.fill_{{ field.name }}("test@example.com")
+{% elif field.field_type.value == "password" %}
+        page_obj.fill_{{ field.name }}("SecurePass123!")
+{% elif field.field_type.value == "number" or field.field_type.value == "integer" %}
+        page_obj.fill_{{ field.name }}("42")
+{% elif field.field_type.value == "checkbox" or field.field_type.value == "boolean" %}
+        page_obj.check(page_obj.{{ field.name | upper }})
+{% elif field.field_type.value == "select" %}
+{% if field.options %}
+        page_obj.select_option(page_obj.{{ field.name | upper }}, value="{{ field.options[0] }}")
+{% else %}
+        pass  # select field {{ field.name }}: no options available
+{% endif %}
+{% else %}
+        page_obj.fill_{{ field.name }}("test value")
+{% endif %}
+{% endfor %}
+        page_obj.submit_{{ form.name | replace('-', '_') }}()
+
+    def test_form_required_field_validation(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """Submitting without required fields should show validation errors."""
+        page_obj = {{ page_object_class }}({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        page_obj.navigate()
+{% set has_required = [] %}
+{% for field in form.fields %}
+{% if field.required %}
+{% if has_required.append(1) %}{% endif %}
+{% endif %}
+{% endfor %}
+{% if has_required %}
+        # Leave all required fields empty and submit
+        page_obj.submit_{{ form.name | replace('-', '_') }}()
+        # The form should not navigate away or should show errors
+        assert page_obj.get_current_url().endswith("{{ page.path }}")
+{% else %}
+        # No required fields defined; form should submit without errors
+        page_obj.submit_{{ form.name | replace('-', '_') }}()
+{% endif %}

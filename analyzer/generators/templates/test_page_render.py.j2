@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+import pytest
+
+from {{ page_object_module }} import {{ page_object_class }}
+
+
+@pytest.mark.generated
+@pytest.mark.regression
+class Test{{ class_name }}Render:
+    """Verify that the {{ page.name }} page renders correctly."""
+
+    def test_page_loads(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """{{ page.name }} page should load successfully."""
+        page_obj = {{ page_object_class }}({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        page_obj.navigate()
+{% if page.title %}
+        assert "{{ page.title }}" in page_obj.get_title()
+{% else %}
+{% if page.interactive_elements %}
+        assert page_obj.is_visible(page_obj.{{ page.interactive_elements[0].text | upper | replace(' ', '_') | replace('-', '_') }})
+{% else %}
+        assert page_obj.get_current_url().endswith("{{ page.path }}")
+{% endif %}
+{% endif %}
+
+    def test_page_has_expected_elements(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """{{ page.name }} page should display all expected interactive elements."""
+        page_obj = {{ page_object_class }}({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        page_obj.navigate()
+{% for element in page.interactive_elements %}
+{% if element.test_id %}
+        assert page_obj.get_by_test_id("{{ element.test_id }}").is_visible()
+{% elif element.selector %}
+        assert page_obj.is_visible("{{ element.selector }}")
+{% endif %}
+{% endfor %}
+{% for form in page.forms %}
+{% for field in form.fields %}
+{% if field.test_id %}
+        assert page_obj.get_by_test_id("{{ field.test_id }}").is_visible()
+{% elif field.selector %}
+        assert page_obj.is_visible("{{ field.selector }}")
+{% endif %}
+{% endfor %}
+{% endfor %}

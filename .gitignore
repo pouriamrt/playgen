@@ -47,6 +47,9 @@ test-results/
 Thumbs.db
 nul
 
+# Generated test output
+generated/
+
 # Logs
 *.log
 logs/

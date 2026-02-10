@@ -1,0 +1,35 @@
+from __future__ import annotations
+
+from pages.base_page import BasePage
+
+
+class {{ class_name }}(BasePage):
+    """Page object for {{ page.name }} ({{ page.path }})."""
+
+    URL = "{{ page.path }}"
+{% for sel_name, sel_value in selectors %}
+    {{ sel_name }} = "{{ sel_value }}"
+{% endfor %}
+
+    def __init__(self, page) -> None:
+        super().__init__(page)
+
+    def navigate(self, path: str | None = None) -> None:
+        super().navigate(path or self.URL)
+{% for form in page.forms %}
+{% for field in form.fields %}
+
+    def fill_{{ field.name }}(self, value: str) -> None:
+        self.fill(self.{{ field.name | upper }}, value)
+{% endfor %}
+
+    def submit_{{ form.name | replace('-', '_') }}(self) -> None:
+        self.click(self.{{ form.name | upper | replace('-', '_') }}_SUBMIT)
+{% endfor %}
+{% for element in page.interactive_elements %}
+{% if element.element_type == "link" and element.href %}
+
+    def click_{{ element.text | lower | replace(' ', '_') | replace('-', '_') }}(self) -> None:
+        self.click(self.{{ element.text | upper | replace(' ', '_') | replace('-', '_') }})
+{% endif %}
+{% endfor %}

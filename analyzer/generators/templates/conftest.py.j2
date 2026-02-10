@@ -1,0 +1,33 @@
+from __future__ import annotations
+
+from typing import Generator
+
+import pytest
+from playwright.sync_api import Page
+
+from utils.api_client import APIClient
+{% for imp_module, imp_class in page_imports %}
+from {{ imp_module }} import {{ imp_class }}
+{% endfor %}
+
+
+# ── Page object fixtures ─────────────────────────────────────────────────
+
+{% for fixture_name, class_name, requires_auth in page_fixtures %}
+
+@pytest.fixture()
+def {{ fixture_name }}({% if requires_auth %}authenticated_page{% else %}page{% endif %}: Page) -> {{ class_name }}:
+    """Provide a {{ class_name }} instance."""
+    return {{ class_name }}({% if requires_auth %}authenticated_page{% else %}page{% endif %})
+
+{% endfor %}
+
+# ── API client fixture ───────────────────────────────────────────────────
+
+
+@pytest.fixture(scope="session")
+def api_client() -> Generator[APIClient, None, None]:
+    """Provide an API client for backend verification."""
+    client = APIClient()
+    yield client
+    client.session.close()

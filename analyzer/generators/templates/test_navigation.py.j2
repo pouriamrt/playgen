@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+import pytest
+
+from pages.base_page import BasePage
+
+
+@pytest.mark.generated
+@pytest.mark.navigation
+@pytest.mark.regression
+class TestNavigation:
+    """Verify that discovered pages are accessible and navigable."""
+{% for page in pages %}
+
+    def test_{{ page.name | replace('-', '_') | replace(' ', '_') | lower }}_accessible(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """{{ page.name }} ({{ page.path }}) should be accessible."""
+        base = BasePage({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        base.navigate("{{ page.path }}")
+        assert "{{ page.path }}" in base.get_current_url()
+{% endfor %}
+{% for page in pages %}
+{% for link in page.links %}
+
+    def test_{{ page.name | replace('-', '_') | replace(' ', '_') | lower }}_to_{{ link | replace('/', '_') | replace('-', '_') | strip_chars('_') | lower }}(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
+        """Navigation from {{ page.name }} to {{ link }} should work."""
+        base = BasePage({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
+        base.navigate("{{ page.path }}")
+        base.navigate("{{ link }}")
+        assert "{{ link }}" in base.get_current_url()
+{% endfor %}
+{% endfor %}

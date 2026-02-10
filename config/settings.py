@@ -84,6 +84,15 @@ class Settings:
     traces_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "traces")
     reports_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "reports")
 
+    # Analyzer / Code Generation
+    source_code_dir: str = field(
+        default_factory=lambda: os.getenv("SOURCE_CODE_DIR", "")
+    )
+    generated_dir: Path = field(default_factory=lambda: PROJECT_ROOT / "generated")
+    discovery_schema_path: Path = field(
+        default_factory=lambda: PROJECT_ROOT / "generated" / "discovery.json"
+    )
+
     def ensure_artifact_dirs(self) -> None:
         for d in (self.screenshots_dir, self.videos_dir, self.traces_dir, self.reports_dir):
             d.mkdir(parents=True, exist_ok=True)

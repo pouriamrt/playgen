@@ -124,6 +124,12 @@ Examples:
         metavar="EXPRESSION",
         help="Only run tests matching the given substring expression (pytest -k)",
     )
+    parser.add_argument(
+        "--generated",
+        action="store_true",
+        default=False,
+        help="Also include generated tests from generated/tests/",
+    )
 
     return parser.parse_args()
 
@@ -178,6 +184,14 @@ def build_pytest_command(args: argparse.Namespace) -> list[str]:
 
     # Test directory
     cmd.append(str(PROJECT_ROOT / "tests"))
+
+    # Include generated tests when requested
+    if args.generated:
+        generated_tests = PROJECT_ROOT / "generated" / "tests"
+        if generated_tests.is_dir():
+            cmd.append(str(generated_tests))
+        else:
+            print(f"Warning: generated test directory not found: {generated_tests}")
 
     # Suite marker
     marker = SUITE_MARKERS.get(args.suite, "")
