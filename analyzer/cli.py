@@ -102,6 +102,11 @@ def main() -> None:
         help="Browser to use (default: chromium)",
     )
     pipe_parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="Run browser in headed (visible) mode",
+    )
+    pipe_parser.add_argument(
         "--auto",
         action="store_true",
         help="Automatically run tests after generation",
@@ -156,6 +161,7 @@ def _dispatch(args: argparse.Namespace) -> None:
             api_url=args.api_url,
             output_dir=args.output_dir,
             browser=args.browser,
+            headed=args.headed,
             auto_run=args.auto,
         )
         sys.exit(code)

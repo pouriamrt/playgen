@@ -14,6 +14,7 @@ def run_pipeline(
     api_url: str | None = None,
     output_dir: str | Path = "generated",
     browser: str = "chromium",
+    headed: bool = False,
     auto_run: bool = False,
 ) -> int:
     """Full pipeline: discover -> generate -> optionally run tests.
@@ -56,6 +57,7 @@ def run_pipeline(
         env = os.environ.copy()
         if api_url:
             env["API_TEST_URL"] = api_url
+        env["HEADLESS"] = "false" if headed else "true"
 
         cmd = [
             sys.executable, "-m", "pytest",
