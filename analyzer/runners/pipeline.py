@@ -11,6 +11,7 @@ from analyzer.runners.generation import run_generation
 def run_pipeline(
     source_dir: str | Path,
     base_url: str = "http://localhost:3000",
+    api_url: str | None = None,
     output_dir: str | Path = "generated",
     browser: str = "chromium",
     auto_run: bool = False,
@@ -44,11 +45,17 @@ def run_pipeline(
 
     # Step 3 -- Run tests (optional)
     if auto_run:
+        import os
+
         print("\n[Step 3/3] Running Generated Tests")
         test_dir = output_dir / "tests"
         if not test_dir.is_dir():
             print(f"Error: test directory not found: {test_dir}")
             return 1
+
+        env = os.environ.copy()
+        if api_url:
+            env["API_TEST_URL"] = api_url
 
         cmd = [
             sys.executable, "-m", "pytest",
@@ -59,11 +66,12 @@ def run_pipeline(
             "--tb=short",
         ]
         print(f"  Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, env=env)
         return result.returncode
     else:
         print("\n[Step 3/3] Skipped (use --auto to run tests automatically)")
+        api_hint = f" --api-url={api_url}" if api_url else ""
         print(f"\nTo run the generated tests manually:")
         print(f"  python -m pytest {output_dir / 'tests'} "
-              f"--base-url={base_url} --browser={browser} -v")
+              f"--base-url={base_url}{api_hint} --browser={browser} -v")
         return 0

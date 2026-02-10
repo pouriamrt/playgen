@@ -52,7 +52,12 @@ def main() -> None:
     run_parser.add_argument(
         "--base-url",
         default="http://localhost:3000",
-        help="Base URL of the app under test (default: http://localhost:3000)",
+        help="Base URL for browser tests (default: http://localhost:3000)",
+    )
+    run_parser.add_argument(
+        "--api-url",
+        default=None,
+        help="Base URL for API tests (defaults to --base-url)",
     )
     run_parser.add_argument(
         "--browser",
@@ -78,7 +83,12 @@ def main() -> None:
     pipe_parser.add_argument(
         "--base-url",
         default="http://localhost:3000",
-        help="Base URL of the app under test (default: http://localhost:3000)",
+        help="Base URL for browser tests (default: http://localhost:3000)",
+    )
+    pipe_parser.add_argument(
+        "--api-url",
+        default=None,
+        help="Base URL for API tests (defaults to --base-url)",
     )
     pipe_parser.add_argument(
         "--output-dir",
@@ -119,6 +129,12 @@ def _dispatch(args: argparse.Namespace) -> None:
             print(f"Error: test directory not found: {test_dir}")
             sys.exit(1)
 
+        import os
+
+        env = os.environ.copy()
+        if args.api_url:
+            env["API_TEST_URL"] = args.api_url
+
         cmd = [
             sys.executable, "-m", "pytest",
             str(test_dir),
@@ -128,7 +144,7 @@ def _dispatch(args: argparse.Namespace) -> None:
             "--tb=short",
         ]
         print(f"Running: {' '.join(cmd)}")
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, env=env)
         sys.exit(result.returncode)
 
     elif args.command == "pipeline":
@@ -137,6 +153,7 @@ def _dispatch(args: argparse.Namespace) -> None:
         code = run_pipeline(
             source_dir=args.source_dir,
             base_url=args.base_url,
+            api_url=args.api_url,
             output_dir=args.output_dir,
             browser=args.browser,
             auto_run=args.auto,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Generator
 
 import pytest
@@ -27,8 +28,14 @@ def {{ fixture_name }}({% if requires_auth %}authenticated_page{% else %}page{% 
 
 @pytest.fixture(scope="session")
 def api_client(request) -> Generator[APIClient, None, None]:
-    """Provide an API client using the --base-url passed to pytest."""
-    url = getattr(request.config.option, "base_url", None) or "http://localhost:3000"
+    """Provide an API client.
+
+    Uses API_TEST_URL env var if set (for separate backend),
+    otherwise falls back to --base-url passed to pytest.
+    """
+    url = os.environ.get("API_TEST_URL") or getattr(
+        request.config.option, "base_url", None
+    ) or "http://localhost:3000"
     client = APIClient(base_url=url)
     yield client
     client.session.close()
