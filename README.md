@@ -2,13 +2,15 @@
 
 A comprehensive, production-grade QA test suite built with **Playwright** and **pytest**. It uses the **Page Object Model** (POM) pattern and supports cross-browser testing, parallel execution, CI/CD integration, and rich reporting.
 
+It also includes a **code analyzer engine** that can scan any web application's source code, detect its tech stack, and **auto-generate** page objects, fixtures, and test files.
+
 ---
 
 ## Table of Contents
 
 - [Project Overview](#project-overview)
 - [Architecture](#architecture)
-  - [Test execution workflow](#test-execution-workflow)
+- [Analyzer Pipeline](#analyzer-pipeline)
 - [Directory Structure](#directory-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -19,6 +21,11 @@ A comprehensive, production-grade QA test suite built with **Playwright** and **
   - [Running Specific Test Suites](#running-specific-test-suites)
   - [Cross-Browser Testing](#cross-browser-testing)
   - [Parallel Execution](#parallel-execution)
+- [Using the Analyzer](#using-the-analyzer)
+  - [Full Pipeline](#full-pipeline)
+  - [Step-by-Step](#step-by-step)
+  - [Supported Frameworks](#supported-frameworks)
+  - [Combining Generated and Hand-Written Tests](#combining-generated-and-hand-written-tests)
 - [CLI Options Reference](#cli-options-reference)
 - [Writing New Tests](#writing-new-tests)
   - [Test File Structure](#test-file-structure)
@@ -41,15 +48,29 @@ A comprehensive, production-grade QA test suite built with **Playwright** and **
 
 ## Project Overview
 
-This test suite provides end-to-end testing for web applications with the following capabilities:
+This project has two complementary systems:
 
-- **Authentication & authorization** testing (login, registration, roles, sessions)
+### 1. Hand-Written Test Suite
+
+A manually authored E2E test suite for web applications covering:
+
+- **Authentication & authorization** (login, registration, roles, sessions, password reset)
 - **Form interaction & validation** (inputs, dropdowns, file uploads, client/server validation)
 - **CRUD operations** (create, read, update, delete with data verification)
 - **Navigation & UI components** (routing, menus, modals, responsive design)
 - **API integration** (REST endpoint verification alongside UI tests)
 - **Performance** (page load times, Core Web Vitals)
 - **Accessibility** (ARIA compliance, keyboard navigation)
+- **Error handling** (resilience and edge cases)
+
+### 2. Code Analyzer Engine
+
+A source code analysis tool that can automatically:
+
+- **Detect the tech stack** of any web application (React, Vue, Angular, FastAPI, Flask, Django, Express)
+- **Discover pages, routes, forms, API endpoints, and data models** from source code
+- **Map frontend components to backend endpoints** using URL matching, naming conventions, and fetch/axios call tracing
+- **Generate Playwright test code** including page objects, conftest fixtures, and test files from Jinja2 templates
 
 All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 
@@ -57,40 +78,35 @@ All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 
 ## Architecture
 
-```
-                     +-------------------+
-                     |   pytest runner    |
-                     +--------+----------+
-                              |
-                   +----------+----------+
-                   |                     |
-            +------+------+      +------+------+
-            |  conftest.py |      |   markers   |
-            |  (fixtures)  |      | smoke/regr. |
-            +------+------+      +-------------+
-                   |
-         +---------+---------+
-         |                   |
-   +-----+-----+      +-----+-----+
-   | Page Objects|      |  Utilities |
-   | (pages/)   |      | (utils/)   |
-   +-----+-----+      +-----+-----+
-         |                   |
-   +-----+-----+      +-----+-----+
-   |  BasePage  |      | APIClient  |
-   | (common    |      | DBHelper   |
-   |  actions)  |      | Faker      |
-   +------------+      +------------+
-```
+![QA Test Suite architecture](qa_test_suite_architecture.png)
 
-- **Page Objects** encapsulate page-specific selectors and actions
+- **CLI Entry Points** — two ways to run: `scripts/run_tests.py` for hand-written tests, `python -m analyzer` for the code analyzer
+- **Page Objects** encapsulate page-specific selectors and actions, inheriting from `BasePage`
 - **Fixtures** in `conftest.py` handle browser setup, authentication, and cleanup
-- **Markers** categorize tests into suites (smoke, regression, etc.)
+- **Markers** categorize tests into suites (smoke, regression, auth, crud, etc.)
 - **Utilities** provide API, database, and data generation helpers
+- **Analyzer Engine** detects frameworks, analyzes source code, maps frontend to backend, and generates test code via Jinja2 templates
+- **Generated output** lands in `generated/` and can be run standalone or alongside the hand-written suite
 
-### Test execution workflow
+### Test Execution Workflow
+
+![QA Test Suite Overall](qa_overall.png)
 
 ![QA Test Suite workflow](qa_test_suite_workflow.png)
+
+---
+
+## Analyzer Pipeline
+
+The analyzer runs a three-step pipeline: **Discover** → **Generate** → **Run**.
+
+![Analyzer pipeline workflow](qa_analyzer_pipeline_workflow.png)
+
+| Step | What It Does |
+|---|---|
+| **Discovery** | Scans source code, detects tech stack, parses routes/components/endpoints/models/forms, maps frontend to backend |
+| **Generation** | Renders Jinja2 templates into page objects, test files, and conftest fixtures in `generated/` |
+| **Run** (optional) | Executes the generated tests with pytest + Playwright against the running application |
 
 ---
 
@@ -98,61 +114,124 @@ All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 
 ```
 QA_test_suite/
+|-- analyzer/                     # Code analyzer engine
+|   |-- cli.py                    # CLI entry point (discover, generate, run, pipeline)
+|   |-- detector.py               # Tech stack detection
+|   |-- mapper.py                 # Frontend-to-backend mapping (URL, convention, fetch tracing)
+|   |-- schema.py                 # Pydantic models (pages, endpoints, forms, models, mappings)
+|   |-- analyzers/                # Framework-specific analyzers
+|   |   |-- base.py               # BaseAnalyzer abstract class
+|   |   |-- registry.py           # Analyzer auto-registration
+|   |   |-- react.py              # React/JSX analyzer
+|   |   |-- angular.py            # Angular analyzer
+|   |   |-- vue.py                # Vue analyzer
+|   |   |-- express.py            # Express.js analyzer
+|   |   |-- fastapi.py            # FastAPI analyzer
+|   |   |-- flask.py              # Flask analyzer
+|   |   +-- django.py             # Django analyzer
+|   |-- generators/               # Code generation from discovery data
+|   |   |-- page_objects.py       # Page object generator
+|   |   |-- tests.py              # Test file generator
+|   |   |-- conftest_gen.py       # Conftest fixture generator
+|   |   +-- templates/            # Jinja2 templates
+|   |       |-- page_object.py.j2
+|   |       |-- test_form.py.j2
+|   |       |-- test_api_crud.py.j2
+|   |       |-- test_navigation.py.j2
+|   |       |-- test_e2e.py.j2
+|   |       |-- test_page_render.py.j2
+|   |       +-- conftest.py.j2
+|   +-- runners/                  # Pipeline orchestration
+|       |-- discovery.py          # Discovery runner
+|       |-- generation.py         # Generation runner
+|       +-- pipeline.py           # Full pipeline (discover + generate + run)
+|
 |-- config/
 |   |-- __init__.py
-|   +-- settings.py          # Centralized settings (env vars, paths, timeouts)
+|   +-- settings.py               # Centralized settings (env vars, paths, timeouts)
 |
 |-- pages/
-|   |-- __init__.py           # Exports all page objects
-|   |-- base_page.py          # BasePage with common methods
-|   |-- login_page.py         # LoginPage
-|   |-- register_page.py      # RegisterPage
-|   |-- dashboard_page.py     # DashboardPage
-|   |-- profile_page.py       # ProfilePage
-|   |-- settings_page.py      # SettingsPage
-|   |-- form_page.py          # FormPage
-|   |-- table_page.py         # TablePage
-|   |-- modal_page.py         # ModalPage
-|   |-- navigation_page.py    # NavigationPage
-|   +-- search_results_page.py # SearchResultsPage
+|   |-- __init__.py               # Exports all page objects
+|   |-- base_page.py              # BasePage with common methods
+|   |-- login_page.py             # LoginPage
+|   |-- register_page.py          # RegisterPage
+|   |-- dashboard_page.py         # DashboardPage
+|   |-- profile_page.py           # ProfilePage
+|   |-- settings_page.py          # SettingsPage
+|   |-- form_page.py              # FormPage
+|   |-- table_page.py             # TablePage
+|   |-- modal_page.py             # ModalPage
+|   |-- navigation_page.py        # NavigationPage
+|   +-- search_results_page.py    # SearchResultsPage
 |
 |-- tests/
-|   |-- __init__.py
-|   |-- conftest.py            # Test-level fixtures (fake_user, unique_email)
-|   |-- test_auth.py           # Authentication tests
-|   |-- test_forms.py          # Form interaction tests
-|   |-- test_crud.py           # CRUD operation tests
-|   |-- test_navigation.py     # Navigation and UI tests
-|   +-- test_api.py            # API integration tests
+|   |-- conftest.py               # Test-level fixtures (fake_user, unique_email)
+|   |-- auth/                     # Authentication tests
+|   |   |-- test_login.py
+|   |   |-- test_logout.py
+|   |   |-- test_registration.py
+|   |   |-- test_password_reset.py
+|   |   +-- test_authorization.py
+|   |-- crud/                     # CRUD operation tests
+|   |   |-- test_create.py
+|   |   |-- test_read.py
+|   |   |-- test_update.py
+|   |   |-- test_delete.py
+|   |   +-- test_search_filter.py
+|   |-- forms/                    # Form interaction tests
+|   |   |-- test_form_validation.py
+|   |   |-- test_form_submission.py
+|   |   |-- test_file_upload.py
+|   |   +-- test_rich_inputs.py
+|   |-- navigation/               # Navigation tests
+|   |   |-- test_navigation.py
+|   |   +-- test_responsive.py
+|   |-- api/                      # API integration tests
+|   |   |-- test_api_integration.py
+|   |   +-- test_api_crud.py
+|   |-- ui/                       # UI component tests
+|   |   |-- test_components.py
+|   |   |-- test_accessibility.py
+|   |   +-- test_visual.py
+|   |-- performance/              # Performance tests
+|   |   +-- test_performance.py
+|   +-- error_handling/           # Error handling tests
+|       +-- test_error_handling.py
 |
 |-- utils/
 |   |-- __init__.py
-|   |-- api_client.py          # REST API client wrapper
-|   |-- database.py            # Database helper (PostgreSQL)
-|   +-- helpers.py             # Faker generators, utilities
+|   |-- api_client.py             # REST API client wrapper
+|   |-- database.py               # Database helper (PostgreSQL)
+|   +-- helpers.py                # Faker generators, utilities
 |
 |-- scripts/
-|   |-- run_tests.py           # CLI test runner
-|   +-- setup.py               # Environment setup script
+|   |-- run_tests.py              # CLI test runner
+|   +-- setup.py                  # Environment setup script
 |
 |-- docker/
-|   |-- Dockerfile             # Docker image for test execution
-|   +-- docker-compose.yml     # Docker Compose services
+|   |-- Dockerfile                # Docker image for test execution
+|   +-- docker-compose.yml        # Docker Compose services
 |
 |-- .github/workflows/
-|   |-- qa-tests.yml           # CI pipeline (push, PR, manual)
-|   +-- nightly-regression.yml # Nightly full regression
+|   |-- qa-tests.yml              # CI pipeline (push, PR, manual)
+|   +-- nightly-regression.yml    # Nightly full regression
 |
-|-- reports/                   # Generated test reports (gitignored)
-|-- screenshots/               # Failure screenshots (gitignored)
-|-- videos/                    # Video recordings (gitignored)
-|-- traces/                    # Playwright traces (gitignored)
+|-- generated/                    # Auto-generated code (created by analyzer, gitignored)
+|   |-- discovery.json            # Discovery results
+|   |-- pages/*.py                # Generated page objects
+|   |-- tests/*.py                # Generated test files
+|   +-- conftest.py               # Generated conftest
 |
-|-- conftest.py                # Root conftest (browser, auth, hooks)
-|-- pyproject.toml             # Project config, dependencies, pytest settings
-|-- .env.example               # Example environment configuration
-|-- CLAUDE.md                  # AI assistant project guide
-+-- README.md                  # This file
+|-- reports/                      # Generated test reports (gitignored)
+|-- screenshots/                  # Failure screenshots (gitignored)
+|-- videos/                       # Video recordings (gitignored)
+|-- traces/                       # Playwright traces (gitignored)
+|
+|-- conftest.py                   # Root conftest (browser, auth, hooks)
+|-- pyproject.toml                # Project config, dependencies, pytest settings
+|-- .env.example                  # Example environment configuration
+|-- CLAUDE.md                     # AI assistant project guide
++-- README.md                     # This file
 ```
 
 ---
@@ -243,7 +322,7 @@ All configuration is managed through environment variables. Copy `.env.example` 
 
 ### Using the CLI Runner
 
-The `scripts/run_tests.py` script provides a convenient CLI:
+The `scripts/run_tests.py` script provides a convenient CLI for running the hand-written test suite:
 
 ```bash
 # Run smoke tests with Chromium (default)
@@ -272,6 +351,9 @@ python scripts/run_tests.py --suite regression --report allure
 
 # Filter tests by keyword
 python scripts/run_tests.py --suite full -k "login or register"
+
+# Include auto-generated tests alongside hand-written ones
+python scripts/run_tests.py --suite smoke --generated
 ```
 
 ### Using pytest Directly
@@ -284,13 +366,13 @@ python -m pytest tests/ -v
 python -m pytest tests/ -m smoke --browser chromium -v
 
 # Run a specific test file
-python -m pytest tests/test_auth.py -v
+python -m pytest tests/auth/test_login.py -v
 
 # Run a specific test class
-python -m pytest tests/test_auth.py::TestLogin -v
+python -m pytest tests/auth/test_login.py::TestLogin -v
 
 # Run a specific test method
-python -m pytest tests/test_auth.py::TestLogin::test_valid_login -v
+python -m pytest tests/auth/test_login.py::TestLogin::test_valid_login -v
 
 # Run with keyword expression
 python -m pytest tests/ -k "login and not social" -v
@@ -312,12 +394,14 @@ python -m pytest tests/ -m regression -v
 python -m pytest tests/ -m critical -v
 
 # Feature-specific suites
-python -m pytest tests/ -m auth -v        # Authentication tests
-python -m pytest tests/ -m forms -v       # Form tests
-python -m pytest tests/ -m crud -v        # CRUD tests
-python -m pytest tests/ -m navigation -v  # Navigation tests
-python -m pytest tests/ -m api -v         # API tests
-python -m pytest tests/ -m performance -v # Performance tests
+python -m pytest tests/ -m auth -v            # Authentication tests
+python -m pytest tests/ -m forms -v           # Form tests
+python -m pytest tests/ -m crud -v            # CRUD tests
+python -m pytest tests/ -m navigation -v      # Navigation tests
+python -m pytest tests/ -m api -v             # API tests
+python -m pytest tests/ -m performance -v     # Performance tests
+python -m pytest tests/ -m ui -v              # UI component tests
+python -m pytest tests/ -m error_handling -v  # Error handling tests
 ```
 
 ### Cross-Browser Testing
@@ -344,11 +428,84 @@ python -m pytest tests/ -n auto -v
 
 ---
 
+## Using the Analyzer
+
+The analyzer scans your application's source code and generates Playwright tests automatically. It is invoked via `python -m analyzer`.
+
+### Full Pipeline
+
+Run discovery, generation, and test execution in one command:
+
+```bash
+# Analyze a React + FastAPI app and auto-run the generated tests
+python -m analyzer pipeline ./path/to/your/app \
+    --base-url http://localhost:5173 \
+    --api-url http://localhost:8000 \
+    --auto --headed
+
+# Same but headless (CI-friendly)
+python -m analyzer pipeline ./path/to/your/app \
+    --base-url http://localhost:3000 \
+    --auto
+
+# Generate tests without running them
+python -m analyzer pipeline ./path/to/your/app \
+    --base-url http://localhost:3000
+```
+
+### Step-by-Step
+
+You can also run each step individually:
+
+```bash
+# Step 1: Discover — scan source code and produce discovery.json
+python -m analyzer discover ./path/to/your/app -o generated/discovery.json
+
+# Step 2: Generate — create page objects, tests, and conftest from discovery
+python -m analyzer generate --schema generated/discovery.json --output-dir generated
+
+# Step 3: Run — execute the generated tests
+python -m analyzer run --base-url http://localhost:3000 --api-url http://localhost:8000
+```
+
+### Supported Frameworks
+
+| Frontend | Backend |
+|---|---|
+| React (JSX/TSX routes, components, forms) | FastAPI (decorators, Pydantic models) |
+| Angular (modules, routing, templates) | Flask (route decorators, models) |
+| Vue (SFC routes, components, templates) | Django (URL conf, views, ORM models) |
+| | Express.js (router, middleware) |
+
+The analyzer detects frameworks by inspecting `package.json`, `requirements.txt`, `pyproject.toml`, project structure, and import patterns. Multiple frameworks can be detected simultaneously (e.g., React frontend + FastAPI backend).
+
+### Frontend-to-Backend Mapping
+
+The mapper uses three strategies to link frontend forms/pages to backend API endpoints:
+
+1. **URL path matching** — matches form `action_url` directly against endpoint paths (highest confidence)
+2. **Name/convention matching** — matches page/form names against endpoint names using CRUD verb conventions
+3. **Fetch/axios reference tracing** — scans source files for `fetch()`, `axios.*()`, and `$.ajax()` calls to find API references
+
+### Combining Generated and Hand-Written Tests
+
+```bash
+# Run hand-written tests + generated tests together
+python scripts/run_tests.py --suite smoke --generated
+
+# Or with pytest directly
+python -m pytest tests/ generated/tests/ -v
+```
+
+---
+
 ## CLI Options Reference
+
+### `scripts/run_tests.py`
 
 | Option | Values | Default | Description |
 |---|---|---|---|
-| `--suite` | smoke, regression, full, auth, forms, crud, navigation, api, performance, critical | smoke | Test suite to run |
+| `--suite` | smoke, regression, full, auth, forms, crud, navigation, api, performance, accessibility, critical | smoke | Test suite to run |
 | `--browser` | chromium, firefox, webkit, all | chromium | Browser to use |
 | `--headed` | flag | false | Show browser window |
 | `--workers` | integer | 1 | Parallel worker count |
@@ -358,8 +515,29 @@ python -m pytest tests/ -n auto -v
 | `--retries` | integer | 0 | Retry count for flaky tests |
 | `--tracing` | flag | false | Enable Playwright tracing |
 | `--video` | flag | false | Enable video recording |
+| `--generated` | flag | false | Include generated tests from `generated/tests/` |
 | `-v` | flag | false | Verbose output |
 | `-k` | expression | none | pytest keyword filter |
+
+### `python -m analyzer`
+
+| Subcommand | Description |
+|---|---|
+| `discover <source_dir>` | Scan source code, output `discovery.json` |
+| `generate --schema <path>` | Generate test code from discovery data |
+| `run --base-url <url>` | Run previously generated tests |
+| `pipeline <source_dir>` | Full pipeline: discover + generate + optionally run |
+
+**Pipeline options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `--base-url` | `http://localhost:3000` | Frontend URL for browser tests |
+| `--api-url` | same as base-url | Backend API URL (for apps with separate frontend/backend) |
+| `--output-dir` | `generated` | Output directory for generated code |
+| `--browser` | chromium | Browser to use (chromium, firefox, webkit) |
+| `--headed` | false | Run browser in visible mode |
+| `--auto` | false | Automatically run tests after generation |
 
 ---
 
@@ -367,7 +545,7 @@ python -m pytest tests/ -n auto -v
 
 ### Test File Structure
 
-Create test files in `tests/` following the naming convention `test_<feature>.py`:
+Create test files in `tests/<feature>/` following the naming convention `test_<behavior>.py`:
 
 ```python
 """Tests for the user profile feature."""
@@ -455,6 +633,10 @@ Apply markers to categorize tests for suite selection:
 @pytest.mark.api             # API integration tests
 @pytest.mark.performance     # Performance tests
 @pytest.mark.accessibility   # Accessibility tests
+@pytest.mark.ui              # UI component tests
+@pytest.mark.error_handling  # Error handling tests
+@pytest.mark.e2e             # End-to-end tests
+@pytest.mark.generated       # Auto-generated tests
 @pytest.mark.slow            # Long-running tests
 ```
 
@@ -787,18 +969,25 @@ Or use CLI flags:
 python scripts/run_tests.py --video --tracing
 ```
 
+### Analyzer detects no frameworks
+
+- Ensure you're pointing to the correct source directory (the one containing `package.json` or `requirements.txt`)
+- Check that the source code uses one of the supported frameworks
+- Try lowering the detection threshold (default is 30% confidence)
+
 ---
 
 ## Contributing
 
 1. **Branch naming:** `feature/<name>`, `fix/<name>`, `test/<name>`
-2. **Test naming:** `test_<feature>.py` files, `Test<Feature>` classes, `test_<behavior>` methods
-3. **Markers:** Always apply at least `@pytest.mark.smoke` or `@pytest.mark.regression`
-4. **Page Objects:** Create page objects for new pages; never put selectors directly in tests
-5. **Selectors:** Use `data-testid` attributes exclusively
-6. **Settings:** Use `from config.settings import settings`; never hardcode URLs or credentials
-7. **Linting:** Run `ruff check .` before committing
-8. **Type checking:** Run `mypy .` to verify type annotations
+2. **Test naming:** `test_<behavior>.py` files, `Test<Feature>` classes, `test_<behavior>` methods
+3. **Test organization:** Place tests in the appropriate `tests/<feature>/` subdirectory
+4. **Markers:** Always apply at least `@pytest.mark.smoke` or `@pytest.mark.regression`
+5. **Page Objects:** Create page objects for new pages; never put selectors directly in tests
+6. **Selectors:** Use `data-testid` attributes exclusively
+7. **Settings:** Use `from config.settings import settings`; never hardcode URLs or credentials
+8. **Linting:** Run `ruff check .` before committing
+9. **Type checking:** Run `mypy .` to verify type annotations
 
 ---
 
