@@ -1,0 +1,295 @@
+name: QA Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Test suite to run"
+        required: false
+        default: "smoke"
+        type: choice
+        options:
+          - smoke
+          - regression
+          - full
+          - critical
+      browser:
+        description: "Browser to test"
+        required: false
+        default: "chromium"
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - webkit
+          - all
+      base_url:
+        description: "Base URL override"
+        required: false
+        type: string
+
+env:
+  PYTHON_VERSION: "3.11"
+  BASE_URL: ${{ inputs.base_url || 'http://localhost:3000' }}
+  HEADLESS: "true"
+  SCREENSHOT_ON_FAILURE: "true"
+  TRACE_RECORDING: "on"
+
+jobs:
+  # -------------------------------------------------------------------
+  # Smoke tests run on every push/PR (single browser, fast feedback)
+  # -------------------------------------------------------------------
+  smoke-tests:
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install --with-deps chromium
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: python -m playwright install-deps chromium
+
+      - name: Run smoke tests
+        run: |
+          python -m pytest tests/ \
+            -m smoke \
+            --browser chromium \
+            --timeout 30 \
+            --html=reports/report.html \
+            --self-contained-html \
+            --strict-markers \
+            --tb=short \
+            -v
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-report
+          path: reports/
+          retention-days: 14
+
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-screenshots
+          path: screenshots/
+          retention-days: 14
+
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-traces
+          path: traces/
+          retention-days: 7
+
+  # -------------------------------------------------------------------
+  # Full regression on main branch (all browsers, matrix strategy)
+  # -------------------------------------------------------------------
+  regression-tests:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ matrix.browser }}-
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: python -m playwright install-deps ${{ matrix.browser }}
+
+      - name: Run regression tests
+        run: |
+          python -m pytest tests/ \
+            -m regression \
+            --browser ${{ matrix.browser }} \
+            --timeout 30 \
+            --html=reports/report-${{ matrix.browser }}.html \
+            --self-contained-html \
+            --strict-markers \
+            --tb=short \
+            -v
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+          VIDEO_RECORDING: "on"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-report-${{ matrix.browser }}
+          path: reports/
+          retention-days: 30
+
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-screenshots-${{ matrix.browser }}
+          path: screenshots/
+          retention-days: 30
+
+      - name: Upload videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-videos-${{ matrix.browser }}
+          path: videos/
+          retention-days: 14
+
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-traces-${{ matrix.browser }}
+          path: traces/
+          retention-days: 14
+
+  # -------------------------------------------------------------------
+  # Manual dispatch (user-selected suite and browser)
+  # -------------------------------------------------------------------
+  manual-tests:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ${{ inputs.browser == 'all' && fromJSON('["chromium","firefox","webkit"]') || fromJSON(format('["{0}"]', inputs.browser)) }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ matrix.browser }}-
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: python -m playwright install-deps ${{ matrix.browser }}
+
+      - name: Run tests
+        run: |
+          MARKER_FLAG=""
+          if [ "${{ inputs.suite }}" != "full" ]; then
+            MARKER_FLAG="-m ${{ inputs.suite }}"
+          fi
+
+          python -m pytest tests/ \
+            $MARKER_FLAG \
+            --browser ${{ matrix.browser }} \
+            --timeout 30 \
+            --html=reports/report-${{ matrix.browser }}.html \
+            --self-contained-html \
+            --strict-markers \
+            --tb=short \
+            -v
+        env:
+          BASE_URL: ${{ inputs.base_url || env.BASE_URL }}
+          TRACE_RECORDING: "on"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-report-${{ inputs.suite }}-${{ matrix.browser }}
+          path: reports/
+          retention-days: 30
+
+      - name: Upload screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-screenshots-${{ inputs.suite }}-${{ matrix.browser }}
+          path: screenshots/
+          retention-days: 30
+
+      - name: Upload traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: manual-traces-${{ inputs.suite }}-${{ matrix.browser }}
+          path: traces/
+          retention-days: 14

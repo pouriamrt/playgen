@@ -1,0 +1,77 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qa-test-suite"
+version = "1.0.0"
+description = "Comprehensive QA test suite built with Playwright and pytest"
+requires-python = ">=3.10"
+dependencies = [
+    "pytest>=7.4.0",
+    "playwright>=1.40.0",
+    "pytest-playwright>=0.4.3",
+    "pytest-html>=4.1.0",
+    "pytest-xdist>=3.5.0",
+    "allure-pytest>=2.13.0",
+    "faker>=22.0.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-retry>=1.6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["config", "utils", "pages"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "--timeout=30",
+    "--html=reports/report.html",
+    "--self-contained-html",
+]
+markers = [
+    "smoke: Quick smoke tests for critical paths",
+    "regression: Full regression test suite",
+    "critical: Tests for critical business functionality",
+    "auth: Authentication and authorization tests",
+    "forms: Form interaction and validation tests",
+    "crud: CRUD operation tests",
+    "navigation: Navigation and routing tests",
+    "api: API integration tests",
+    "accessibility: Accessibility compliance tests",
+    "performance: Performance and load tests",
+    "ui: UI component interaction tests",
+    "visual: Visual regression screenshot tests",
+    "responsive: Responsive design and viewport tests",
+    "slow: Tests that take longer than usual",
+    "error_handling: Error handling and resilience tests",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

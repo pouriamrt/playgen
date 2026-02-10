@@ -1,0 +1,108 @@
+# QA Test Suite - Docker Compose
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up smoke        # smoke tests
+#   docker compose -f docker/docker-compose.yml up regression    # regression tests
+#   docker compose -f docker/docker-compose.yml up all-browsers  # all browsers
+#
+# Reports are mounted to ./reports on the host.
+
+services:
+  # ---------------------------------------------------------------
+  # Smoke tests (chromium only, quick feedback)
+  # ---------------------------------------------------------------
+  smoke:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command:
+      - "tests/"
+      - "-m"
+      - "smoke"
+      - "--browser"
+      - "chromium"
+      - "--timeout"
+      - "30"
+      - "--html=reports/report-smoke.html"
+      - "--self-contained-html"
+      - "--strict-markers"
+      - "--tb=short"
+      - "-v"
+    environment:
+      - BASE_URL=${BASE_URL:-http://host.docker.internal:3000}
+      - HEADLESS=true
+      - SCREENSHOT_ON_FAILURE=true
+    volumes:
+      - ../reports:/app/reports
+      - ../screenshots:/app/screenshots
+      - ../videos:/app/videos
+      - ../traces:/app/traces
+
+  # ---------------------------------------------------------------
+  # Regression tests (chromium, with retries)
+  # ---------------------------------------------------------------
+  regression:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command:
+      - "tests/"
+      - "-m"
+      - "regression"
+      - "--browser"
+      - "chromium"
+      - "--timeout"
+      - "30"
+      - "--retries"
+      - "2"
+      - "--html=reports/report-regression.html"
+      - "--self-contained-html"
+      - "--strict-markers"
+      - "--tb=short"
+      - "-v"
+    environment:
+      - BASE_URL=${BASE_URL:-http://host.docker.internal:3000}
+      - HEADLESS=true
+      - SCREENSHOT_ON_FAILURE=true
+      - TRACE_RECORDING=on
+    volumes:
+      - ../reports:/app/reports
+      - ../screenshots:/app/screenshots
+      - ../videos:/app/videos
+      - ../traces:/app/traces
+
+  # ---------------------------------------------------------------
+  # Full suite across all browsers
+  # ---------------------------------------------------------------
+  all-browsers:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command:
+      - "tests/"
+      - "--browser"
+      - "chromium"
+      - "--browser"
+      - "firefox"
+      - "--browser"
+      - "webkit"
+      - "--timeout"
+      - "60"
+      - "--retries"
+      - "2"
+      - "--html=reports/report-all-browsers.html"
+      - "--self-contained-html"
+      - "--strict-markers"
+      - "--tb=short"
+      - "-v"
+    environment:
+      - BASE_URL=${BASE_URL:-http://host.docker.internal:3000}
+      - HEADLESS=true
+      - SCREENSHOT_ON_FAILURE=true
+      - TRACE_RECORDING=on
+      - VIDEO_RECORDING=on
+    volumes:
+      - ../reports:/app/reports
+      - ../screenshots:/app/screenshots
+      - ../videos:/app/videos
+      - ../traces:/app/traces

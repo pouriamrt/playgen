@@ -1,0 +1,164 @@
+name: Nightly Regression
+
+on:
+  schedule:
+    # Run every night at 2:00 AM UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Base URL override"
+        required: false
+        type: string
+
+env:
+  PYTHON_VERSION: "3.11"
+  BASE_URL: ${{ inputs.base_url || 'http://localhost:3000' }}
+  HEADLESS: "true"
+  SCREENSHOT_ON_FAILURE: "true"
+  TRACE_RECORDING: "on"
+  VIDEO_RECORDING: "on"
+
+jobs:
+  nightly-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ matrix.browser }}-
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: python -m playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: python -m playwright install-deps ${{ matrix.browser }}
+
+      - name: Run full regression suite
+        run: |
+          python -m pytest tests/ \
+            --browser ${{ matrix.browser }} \
+            --timeout 60 \
+            --html=reports/nightly-${{ matrix.browser }}.html \
+            --self-contained-html \
+            --alluredir=reports/allure-results \
+            --strict-markers \
+            --tb=short \
+            --retries 2 \
+            -v
+        env:
+          BASE_URL: ${{ env.BASE_URL }}
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-report-${{ matrix.browser }}
+          path: reports/
+          retention-days: 30
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-screenshots-${{ matrix.browser }}
+          path: screenshots/
+          retention-days: 30
+
+      - name: Upload videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-videos-${{ matrix.browser }}
+          path: videos/
+          retention-days: 14
+
+      - name: Upload traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-traces-${{ matrix.browser }}
+          path: traces/
+          retention-days: 14
+
+  # -------------------------------------------------------------------
+  # Summary notification job
+  # -------------------------------------------------------------------
+  notify:
+    needs: nightly-regression
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check regression results
+        run: |
+          if [ "${{ needs.nightly-regression.result }}" == "failure" ]; then
+            echo "REGRESSION_FAILED=true" >> $GITHUB_ENV
+            echo "::error::Nightly regression failed! Check the artifacts for details."
+          else
+            echo "REGRESSION_FAILED=false" >> $GITHUB_ENV
+            echo "Nightly regression passed."
+          fi
+
+      - name: Create summary
+        if: always()
+        run: |
+          echo "## Nightly Regression Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Browser | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Chromium | ${{ needs.nightly-regression.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Firefox | ${{ needs.nightly-regression.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WebKit | ${{ needs.nightly-regression.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+
+      # Uncomment and configure for Slack notifications:
+      # - name: Notify Slack on failure
+      #   if: env.REGRESSION_FAILED == 'true'
+      #   uses: slackapi/slack-github-action@v2.0.0
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+      #     webhook-type: incoming-webhook
+      #     payload: |
+      #       {
+      #         "text": "Nightly regression FAILED",
+      #         "blocks": [
+      #           {
+      #             "type": "header",
+      #             "text": { "type": "plain_text", "text": "Nightly Regression Failed" }
+      #           },
+      #           {
+      #             "type": "section",
+      #             "text": {
+      #               "type": "mrkdwn",
+      #               "text": "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      #             }
+      #           }
+      #         ]
+      #       }
