@@ -155,7 +155,7 @@ QA_test_suite/
 ## Prerequisites
 
 - **Python 3.10+** (3.11 recommended)
-- **pip** (bundled with Python)
+- **[uv](https://docs.astral.sh/uv/)** - Fast Python package manager
 - **Node.js** (optional, required only if Playwright needs to download browsers with system deps)
 - **Git**
 
@@ -184,13 +184,13 @@ The setup script will:
 
 ```bash
 # Install dependencies
-pip install -e .
+uv sync
 
 # Install dev dependencies (ruff, mypy)
-pip install -e ".[dev]"
+uv sync --extra dev
 
 # Install Playwright browsers with system dependencies
-python -m playwright install --with-deps
+uv run python -m playwright install --with-deps
 
 # Copy and configure environment
 cp .env.example .env
@@ -602,7 +602,7 @@ Two workflow files are included:
 | Manual dispatch | Choose suite, browser, and base URL |
 
 **Features:**
-- Pip dependency caching
+- uv dependency caching
 - Playwright browser caching
 - Test report artifact uploads
 - Screenshot and trace uploads on failure
@@ -764,9 +764,9 @@ python -m playwright install-deps
 ModuleNotFoundError: No module named 'pages'
 ```
 
-**Fix:** Install the project in editable mode:
+**Fix:** Sync the project dependencies:
 ```bash
-pip install -e .
+uv sync
 ```
 
 ### Video/trace files not generated
