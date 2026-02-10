@@ -8,6 +8,7 @@ A comprehensive, production-grade QA test suite built with **Playwright** and **
 
 - [Project Overview](#project-overview)
 - [Architecture](#architecture)
+  - [Test execution workflow](#test-execution-workflow)
 - [Directory Structure](#directory-structure)
 - [Prerequisites](#prerequisites)
 - [Installation](#installation)
@@ -86,6 +87,10 @@ All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 - **Fixtures** in `conftest.py` handle browser setup, authentication, and cleanup
 - **Markers** categorize tests into suites (smoke, regression, etc.)
 - **Utilities** provide API, database, and data generation helpers
+
+### Test execution workflow
+
+![QA Test Suite workflow](qa_test_suite_workflow.png)
 
 ---
 
