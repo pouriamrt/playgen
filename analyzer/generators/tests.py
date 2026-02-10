@@ -34,9 +34,10 @@ def _to_module_name(page_name: str) -> str:
     return name or "index"
 
 
-def _page_object_module(page_name: str) -> str:
+def _page_object_module(page_name: str, import_prefix: str = "") -> str:
     """Return the import path for a generated page object."""
-    return f"pages.{_to_module_name(page_name)}_page"
+    prefix = f"{import_prefix}." if import_prefix else ""
+    return f"{prefix}pages.{_to_module_name(page_name)}_page"
 
 
 def _page_object_class(page_name: str) -> str:
@@ -79,6 +80,7 @@ def _generate_page_render_tests(
     discovery: DiscoveryResult,
     tests_dir: Path,
     env: Environment,
+    import_prefix: str = "",
 ) -> list[Path]:
     """Generate a test file for each discovered page's render behaviour."""
     template = env.get_template("test_page_render.py.j2")
@@ -92,7 +94,7 @@ def _generate_page_render_tests(
         rendered = template.render(
             page=page,
             class_name=class_name,
-            page_object_module=_page_object_module(page.name),
+            page_object_module=_page_object_module(page.name, import_prefix),
             page_object_class=_page_object_class(page.name),
         )
 
@@ -110,6 +112,7 @@ def _generate_form_tests(
     discovery: DiscoveryResult,
     tests_dir: Path,
     env: Environment,
+    import_prefix: str = "",
 ) -> list[Path]:
     """Generate test files for every form on every page."""
     template = env.get_template("test_form.py.j2")
@@ -123,7 +126,7 @@ def _generate_form_tests(
                 page=page,
                 form=form,
                 class_name=class_name,
-                page_object_module=_page_object_module(page.name),
+                page_object_module=_page_object_module(page.name, import_prefix),
                 page_object_class=_page_object_class(page.name),
             )
 
@@ -387,6 +390,7 @@ def _generate_e2e_tests(
 def generate_tests(
     discovery: DiscoveryResult,
     output_dir: Path,
+    import_prefix: str = "",
 ) -> list[Path]:
     """Generate all test files from a discovery result.
 
@@ -398,8 +402,8 @@ def generate_tests(
     env = _jinja_env()
     generated: list[Path] = []
 
-    generated.extend(_generate_page_render_tests(discovery, tests_dir, env))
-    generated.extend(_generate_form_tests(discovery, tests_dir, env))
+    generated.extend(_generate_page_render_tests(discovery, tests_dir, env, import_prefix))
+    generated.extend(_generate_form_tests(discovery, tests_dir, env, import_prefix))
     generated.extend(_generate_api_tests(discovery, tests_dir, env))
     generated.extend(_generate_navigation_tests(discovery, tests_dir, env))
     generated.extend(_generate_e2e_tests(discovery, tests_dir, env))

@@ -9,6 +9,31 @@ from analyzer.generators.tests import generate_tests
 from analyzer.schema import DiscoveryResult
 
 
+def _compute_import_prefix(output_dir: Path) -> str:
+    """Derive a Python import prefix from the output directory.
+
+    ``Path("generated")`` → ``"generated"``
+    ``Path(".")`` or ``Path("")`` → ``""``
+    ``Path("out/sub")`` → ``"out.sub"``
+    """
+    normalized = str(output_dir).replace("\\", "/").strip("/").strip(".")
+    if not normalized:
+        return ""
+    return normalized.replace("/", ".")
+
+
+def _ensure_init_files(output_dir: Path) -> list[Path]:
+    """Create ``__init__.py`` files in the output dir and its subdirs."""
+    created: list[Path] = []
+    for directory in (output_dir, output_dir / "pages", output_dir / "tests"):
+        directory.mkdir(parents=True, exist_ok=True)
+        init_file = directory / "__init__.py"
+        if not init_file.exists():
+            init_file.write_text("")
+            created.append(init_file)
+    return created
+
+
 def run_generation(
     schema_path: str | Path | None = None,
     discovery: DiscoveryResult | None = None,
@@ -43,8 +68,15 @@ def run_generation(
         if target.is_dir():
             shutil.rmtree(target)
 
+    # Compute the import prefix so generated tests can find generated pages
+    import_prefix = _compute_import_prefix(output_dir)
+
     print(f"Generating test code in {output_dir}/ ...")
     generated: list[Path] = []
+
+    # Ensure __init__.py files so the output dir is importable as a package
+    init_files = _ensure_init_files(output_dir)
+    generated.extend(init_files)
 
     # Page objects
     po_files = generate_page_objects(discovery, output_dir)
@@ -52,12 +84,12 @@ def run_generation(
     print(f"  Page objects: {len(po_files)} files")
 
     # Tests
-    test_files = generate_tests(discovery, output_dir)
+    test_files = generate_tests(discovery, output_dir, import_prefix)
     generated.extend(test_files)
     print(f"  Tests:        {len(test_files)} files")
 
     # Conftest
-    conftest_path = generate_conftest(discovery, output_dir)
+    conftest_path = generate_conftest(discovery, output_dir, import_prefix)
     generated.append(conftest_path)
     print(f"  Conftest:     {conftest_path}")
 

@@ -39,6 +39,7 @@ def _fixture_name(page_name: str) -> str:
 def generate_conftest(
     discovery: DiscoveryResult,
     output_dir: Path,
+    import_prefix: str = "",
 ) -> Path:
     """Generate a conftest.py with fixtures for discovered pages.
 
@@ -56,12 +57,13 @@ def generate_conftest(
     page_imports: list[tuple[str, str]] = []
     page_fixtures: list[tuple[str, str, bool]] = []
 
+    prefix = f"{import_prefix}." if import_prefix else ""
     for page in discovery.pages:
         # Skip SPA-detected pages without forms/test_ids (they get E2E tests)
         if not page.forms and not page.test_ids:
             continue
 
-        module = f"pages.{_to_module_name(page.name)}_page"
+        module = f"{prefix}pages.{_to_module_name(page.name)}_page"
         cls = _to_class_name(page.name)
         fixture = _fixture_name(page.name)
 
