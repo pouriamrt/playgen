@@ -14,7 +14,7 @@ class Test{{ class_name }}API:
 
     def test_list(self, api_client: APIClient) -> None:
         """GET {{ list_endpoint.path }} should return a list."""
-        response = api_client.get("{{ list_endpoint.path }}")
+        response = api_client.get("{{ list_endpoint.path | resolve_params }}")
         api_client.assert_status(response, 200)
         data = response.json()
         assert isinstance(data, (list, dict))
@@ -22,16 +22,16 @@ class Test{{ class_name }}API:
 {% if has_create %}
 
     def test_create(self, api_client: APIClient) -> None:
-        """POST {{ create_endpoint.path }} should create a new resource."""
+        """POST {{ create_endpoint.path }} should create a resource."""
         payload = {{ sample_payload }}
-        response = api_client.post("{{ create_endpoint.path }}", data=payload)
-        api_client.assert_status(response, 201)
+        response = api_client.post("{{ create_endpoint.path | resolve_params }}", data=payload)
+        assert response.status_code in (200, 201)
 {% endif %}
 {% if has_read %}
 
     def test_read(self, api_client: APIClient) -> None:
         """GET {{ read_endpoint.path }} should return a single resource."""
-        response = api_client.get("{{ read_endpoint.path }}")
+        response = api_client.get("{{ read_endpoint.path | resolve_params }}")
         api_client.assert_status(response, 200)
         data = response.json()
         assert isinstance(data, dict)
@@ -41,13 +41,13 @@ class Test{{ class_name }}API:
     def test_update(self, api_client: APIClient) -> None:
         """PUT {{ update_endpoint.path }} should update the resource."""
         payload = {{ sample_payload }}
-        response = api_client.put("{{ update_endpoint.path }}", data=payload)
+        response = api_client.put("{{ update_endpoint.path | resolve_params }}", data=payload)
         assert response.status_code in (200, 204)
 {% endif %}
 {% if has_delete %}
 
     def test_delete(self, api_client: APIClient) -> None:
         """DELETE {{ delete_endpoint.path }} should remove the resource."""
-        response = api_client.delete("{{ delete_endpoint.path }}")
+        response = api_client.delete("{{ delete_endpoint.path | resolve_params }}")
         assert response.status_code in (200, 204)
 {% endif %}

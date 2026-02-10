@@ -204,7 +204,7 @@ class FastAPIAnalyzer(BaseAnalyzer):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for decorator in node.decorator_list:
-                endpoint = self._parse_route_decorator(decorator, node.name, source_file)
+                endpoint = self._parse_route_decorator(decorator, node, source_file)
                 if endpoint:
                     endpoints.append(endpoint)
 
@@ -213,7 +213,7 @@ class FastAPIAnalyzer(BaseAnalyzer):
     def _parse_route_decorator(
         self,
         decorator: ast.expr,
-        func_name: str,
+        func_node: ast.FunctionDef | ast.AsyncFunctionDef,
         source_file: str,
     ) -> EndpointDefinition | None:
         """Parse a decorator like @app.get("/path") or @router.post("/path")."""
@@ -245,14 +245,31 @@ class FastAPIAnalyzer(BaseAnalyzer):
         if rm_node is not None:
             response_model = _get_annotation_name(rm_node)
 
+        # Extract request_model from function parameter annotations
+        # Skip 'self', path params, and built-in types — the remaining
+        # typed parameter whose annotation is a class name is the body model
+        request_model = ""
+        builtin_types = {"str", "int", "float", "bool", "bytes", "Request", "Response"}
+        for arg in func_node.args.args:
+            if arg.arg in ("self", "cls", "request", "response"):
+                continue
+            if arg.arg in path_params:
+                continue
+            if arg.annotation:
+                ann_name = _get_annotation_name(arg.annotation)
+                if ann_name and ann_name not in builtin_types:
+                    request_model = ann_name
+                    break
+
         return EndpointDefinition(
             path=path_str,
             method=http_method,
-            name=func_name,
-            view_name=func_name,
+            name=func_node.name,
+            view_name=func_node.name,
             source_file=source_file,
             path_params=path_params,
             response_model=response_model,
+            request_model=request_model,
         )
 
     @staticmethod

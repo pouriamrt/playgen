@@ -49,6 +49,17 @@ def _strip_chars(value: str, chars: str = "_") -> str:
     return value.strip(chars)
 
 
+def _resolve_path_params(path: str) -> str:
+    """Replace path parameter placeholders with sample values.
+
+    ``{id}`` / ``{topic_id}`` / ``<int:pk>`` / ``:id`` → ``1``
+    """
+    resolved = re.sub(r"\{[^}]+\}", "1", path)
+    resolved = re.sub(r"<[^>]+>", "1", resolved)
+    resolved = re.sub(r":([a-zA-Z_]\w*)", "1", resolved)
+    return resolved
+
+
 def _jinja_env() -> Environment:
     env = Environment(
         loader=FileSystemLoader(str(_TEMPLATE_DIR)),
@@ -57,6 +68,7 @@ def _jinja_env() -> Environment:
         lstrip_blocks=True,
     )
     env.filters["strip_chars"] = _strip_chars
+    env.filters["resolve_params"] = _resolve_path_params
     return env
 
 
@@ -212,7 +224,11 @@ def _generate_api_tests(
 
         # Find a representative endpoint for model lookup
         representative = ops.get("create") or ops.get("list") or next(iter(ops.values()))
-        model = _find_model_for_endpoint(representative, discovery.models)
+        model = None
+        for ep in ops.values():
+            model = _find_model_for_endpoint(ep, discovery.models)
+            if model:
+                break
 
         rendered = template.render(
             endpoint=representative,

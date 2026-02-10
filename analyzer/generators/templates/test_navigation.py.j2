@@ -15,8 +15,8 @@ class TestNavigation:
     def test_{{ page.name | replace('-', '_') | replace(' ', '_') | lower }}_accessible(self, {% if page.requires_auth %}authenticated_page{% else %}page{% endif %}) -> None:
         """{{ page.name }} ({{ page.path }}) should be accessible."""
         base = BasePage({% if page.requires_auth %}authenticated_page{% else %}page{% endif %})
-        base.navigate("{{ page.path }}")
-        assert "{{ page.path }}" in base.get_current_url()
+        base.navigate("{{ page.path | resolve_params }}")
+        assert "{{ page.path | resolve_params }}" in base.get_current_url()
 {% endfor %}
 {% for page in pages %}
 {% for link in page.links %}

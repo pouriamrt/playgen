@@ -43,9 +43,19 @@ class BaseAnalyzer(ABC):
         """Discover forms in the source code. Override in subclasses."""
         return []
 
+    _EXCLUDE_DIRS = {
+        ".venv", "venv", "env", "node_modules", ".git", "__pycache__",
+        ".tox", ".mypy_cache", ".pytest_cache", "dist", "build",
+        ".eggs", "site-packages", ".next", ".nuxt",
+    }
+
     def find_files(self, pattern: str) -> list[Path]:
-        """Find files matching a glob pattern relative to source_dir."""
-        return sorted(self.source_dir.rglob(pattern))
+        """Find files matching a glob pattern, skipping common non-source dirs."""
+        results: list[Path] = []
+        for path in self.source_dir.rglob(pattern):
+            if not any(part in self._EXCLUDE_DIRS for part in path.parts):
+                results.append(path)
+        return sorted(results)
 
     def read_file(self, path: Path) -> str:
         """Read a file and return its contents, or empty string on error."""

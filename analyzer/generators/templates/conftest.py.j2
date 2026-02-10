@@ -26,8 +26,9 @@ def {{ fixture_name }}({% if requires_auth %}authenticated_page{% else %}page{% 
 
 
 @pytest.fixture(scope="session")
-def api_client() -> Generator[APIClient, None, None]:
-    """Provide an API client for backend verification."""
-    client = APIClient()
+def api_client(request) -> Generator[APIClient, None, None]:
+    """Provide an API client using the --base-url passed to pytest."""
+    url = getattr(request.config.option, "base_url", None) or "http://localhost:3000"
+    client = APIClient(base_url=url)
     yield client
     client.session.close()

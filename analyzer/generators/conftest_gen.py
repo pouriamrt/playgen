@@ -10,17 +10,25 @@ from analyzer.schema import DiscoveryResult, PageDefinition
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
+def _sanitize_name(name: str) -> str:
+    """Remove path parameter placeholders from a name."""
+    name = re.sub(r"<[^>]+>", "", name)
+    name = re.sub(r":[a-zA-Z_]\w*", "", name)
+    name = re.sub(r"\{[^}]+\}", "", name)
+    return name
+
+
 def _to_class_name(page_name: str) -> str:
     """Convert a page name like ``user-profile`` to ``UserProfilePage``."""
-    parts = re.split(r"[-_ /]+", page_name)
+    parts = re.split(r"[-_ /]+", _sanitize_name(page_name))
     return "".join(word.capitalize() for word in parts if word) + "Page"
 
 
 def _to_module_name(page_name: str) -> str:
     """Convert a page name to a module-safe name."""
-    name = re.sub(r"[-/ ]+", "_", page_name.strip()).lower()
+    name = re.sub(r"[-/ ]+", "_", _sanitize_name(page_name).strip()).lower()
     name = re.sub(r"_+", "_", name).strip("_")
-    return name
+    return name or "index"
 
 
 def _fixture_name(page_name: str) -> str:
