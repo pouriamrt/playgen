@@ -80,8 +80,6 @@ All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 
 ![QA Test Suite Overall](qa_overall.png)
 
-![QA Test Suite architecture](qa_test_suite_architecture.png)
-
 - **CLI Entry Points** — two ways to run: `scripts/run_tests.py` for hand-written tests, `python -m analyzer` for the code analyzer
 - **Page Objects** encapsulate page-specific selectors and actions, inheriting from `BasePage`
 - **Fixtures** in `conftest.py` handle browser setup, authentication, and cleanup
