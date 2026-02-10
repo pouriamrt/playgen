@@ -78,6 +78,8 @@ All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 
 ## Architecture
 
+![QA Test Suite Overall](qa_overall.png)
+
 ![QA Test Suite architecture](qa_test_suite_architecture.png)
 
 - **CLI Entry Points** — two ways to run: `scripts/run_tests.py` for hand-written tests, `python -m analyzer` for the code analyzer
@@ -89,8 +91,6 @@ All tests run against **Chromium**, **Firefox**, and **WebKit** via Playwright.
 - **Generated output** lands in `generated/` and can be run standalone or alongside the hand-written suite
 
 ### Test Execution Workflow
-
-![QA Test Suite Overall](qa_overall.png)
 
 ![QA Test Suite workflow](qa_test_suite_workflow.png)
 
