@@ -36,11 +36,11 @@ class Test{{ class_name }}:
         page_obj.fill_{{ field.name }}("SecurePass123!")
 {% elif field.field_type.value == "number" or field.field_type.value == "integer" %}
         page_obj.fill_{{ field.name }}("42")
-{% elif field.field_type.value == "checkbox" or field.field_type.value == "boolean" %}
-        page_obj.check(page_obj.{{ field.name | upper }})
+{% elif field.field_type.value in ("checkbox", "boolean", "radio") %}
+        page_obj.check_{{ field.name }}()
 {% elif field.field_type.value == "select" %}
 {% if field.options %}
-        page_obj.select_option(page_obj.{{ field.name | upper }}, value="{{ field.options[0] }}")
+        page_obj.select_{{ field.name }}("{{ field.options[0] }}")
 {% else %}
         pass  # select field {{ field.name }}: no options available
 {% endif %}

@@ -18,9 +18,22 @@ class {{ class_name }}(BasePage):
         super().navigate(path or self.URL)
 {% for form in page.forms %}
 {% for field in form.fields %}
+{% if field.field_type.value in ("checkbox", "boolean", "radio") %}
+
+    def check_{{ field.name }}(self) -> None:
+        self.check(self.{{ field.name | upper }})
+
+    def uncheck_{{ field.name }}(self) -> None:
+        self.uncheck(self.{{ field.name | upper }})
+{% elif field.field_type.value == "select" %}
+
+    def select_{{ field.name }}(self, value: str) -> None:
+        self.select_option(self.{{ field.name | upper }}, value=value)
+{% else %}
 
     def fill_{{ field.name }}(self, value: str) -> None:
         self.fill(self.{{ field.name | upper }}, value)
+{% endif %}
 {% endfor %}
 
     def submit_{{ form.name | replace('-', '_') }}(self) -> None:

@@ -40,12 +40,28 @@ def {{ fixture_name }}({% if requires_auth %}authenticated_page{% else %}page{% 
 
 {% endfor %}
 
+# ── Pytest options ───────────────────────────────────────────────────────
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    # Guard against duplicate registration if root conftest already defines this
+    try:
+        parser.addoption(
+            "--api-url",
+            default=None,
+            help="Base URL for API tests (overrides API_URL env var)",
+        )
+    except ValueError:
+        pass
+
+
 # ── API client fixture ───────────────────────────────────────────────────
 
 
 @pytest.fixture(scope="session")
-def api_client() -> Generator[APIClient, None, None]:
+def api_client(request: pytest.FixtureRequest) -> Generator[APIClient, None, None]:
     """Provide an API client pointed at the backend (API_URL from settings)."""
-    client = APIClient()
+    api_url = request.config.getoption("--api-url", default=None)
+    client = APIClient(base_url=api_url)
     yield client
     client.session.close()

@@ -17,6 +17,15 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Register custom CLI options."""
+    parser.addoption(
+        "--api-url",
+        default=None,
+        help="Base URL for API tests (overrides API_URL env var / settings.api_url)",
+    )
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Ensure artifact directories exist before any test runs."""
     settings.ensure_artifact_dirs()
@@ -122,9 +131,10 @@ def guest_page(page: Page) -> Page:
 
 
 @pytest.fixture(scope="session")
-def api_client() -> Generator[APIClient, None, None]:
+def api_client(request: pytest.FixtureRequest) -> Generator[APIClient, None, None]:
     """Provide an API client instance for backend verification."""
-    client = APIClient()
+    api_url = request.config.getoption("--api-url", default=None)
+    client = APIClient(base_url=api_url)
     yield client
     client.session.close()
 
