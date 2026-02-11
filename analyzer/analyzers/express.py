@@ -279,26 +279,77 @@ class ExpressAnalyzer(BaseAnalyzer):
         return [f for f in files if "node_modules" not in str(f)]
 
     def _find_router_mounts(self) -> dict[str, str]:
-        """Find app.use('/prefix', router) patterns to map variable names to prefixes."""
+        """Find app.use('/prefix', router) and resolve variables to file paths.
+
+        Returns a dict mapping variable names to their mount prefixes,
+        plus a dict mapping resolved file paths to prefixes.
+        """
         mounts: dict[str, str] = {}
+        # Also build var_name -> require/import path mapping
+        self._var_to_file: dict[str, str] = {}
+
         for fpath in self._get_js_files():
             content = self.read_file(fpath)
             if not content:
                 continue
+
+            # Track require/import: const testRouter = require('./routes/test')
+            for req_match in re.finditer(
+                r"""(?:const|let|var)\s+(\w+)\s*=\s*require\s*\(\s*["']([^"']+)["']\s*\)""",
+                content,
+            ):
+                var_name = req_match.group(1)
+                req_path = req_match.group(2)
+                resolved = self._resolve_require_path(fpath, req_path)
+                if resolved:
+                    self._var_to_file[var_name] = str(resolved)
+
+            # Track ES import: import testRouter from './routes/test'
+            for imp_match in re.finditer(
+                r"""import\s+(\w+)\s+from\s+["']([^"']+)["']""",
+                content,
+            ):
+                var_name = imp_match.group(1)
+                imp_path = imp_match.group(2)
+                resolved = self._resolve_require_path(fpath, imp_path)
+                if resolved:
+                    self._var_to_file[var_name] = str(resolved)
+
             for m in _ROUTER_MOUNT_RE.finditer(content):
                 prefix = m.group(1).rstrip("/")
                 var_name = m.group(2)
                 mounts[var_name] = prefix
+
         return mounts
+
+    def _resolve_require_path(self, from_file: Path, req_path: str) -> Path | None:
+        """Resolve a relative require/import path to an actual file."""
+        if not req_path.startswith("."):
+            return None
+        base_dir = from_file.parent
+        candidate = (base_dir / req_path).resolve()
+        for ext in ("", ".js", ".ts", ".mjs", ".cjs", "/index.js", "/index.ts"):
+            check = Path(str(candidate) + ext)
+            if check.is_file():
+                return check
+        return None
 
     def _guess_prefix_for_file(
         self, fpath: Path, mount_prefixes: dict[str, str]
     ) -> str:
         """Try to guess the route prefix for a file based on router mounts.
 
-        This is a best-effort heuristic: if the filename matches a mounted
-        router variable name, use its prefix.
+        First tries to match via resolved require/import paths, then falls
+        back to a filename-based heuristic.
         """
+        # Try exact file resolution first
+        fpath_resolved = str(fpath.resolve())
+        for var_name, prefix in mount_prefixes.items():
+            resolved_path = self._var_to_file.get(var_name)
+            if resolved_path and Path(resolved_path).resolve() == Path(fpath_resolved):
+                return prefix
+
+        # Fallback: filename heuristic
         stem = fpath.stem.lower().replace("router", "").replace("route", "").replace("_", "").replace("-", "")
         for var_name, prefix in mount_prefixes.items():
             var_clean = var_name.lower().replace("router", "").replace("route", "").replace("_", "").replace("-", "")

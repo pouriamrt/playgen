@@ -127,7 +127,8 @@ class FlaskAnalyzer(BaseAnalyzer):
             if tree is None:
                 continue
             rel = self.relative_path(py_file)
-            endpoints.extend(self._extract_endpoints(tree, rel))
+            prefix = self._find_blueprint_prefix(tree)
+            endpoints.extend(self._extract_endpoints(tree, rel, prefix))
 
         return endpoints
 
@@ -160,6 +161,7 @@ class FlaskAnalyzer(BaseAnalyzer):
             if tree is None:
                 continue
             rel = self.relative_path(py_file)
+            bp_prefix = self._find_blueprint_prefix(tree)
 
             for node in ast.walk(tree):
                 if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -170,8 +172,13 @@ class FlaskAnalyzer(BaseAnalyzer):
 
                 path_str, _methods = route_info
 
+                # Prepend the blueprint url_prefix
+                if bp_prefix:
+                    path_str = bp_prefix.rstrip("/") + "/" + path_str.lstrip("/")
+                    path_str = "/" + path_str.lstrip("/")
+
                 # Skip routes that look like API endpoints
-                if any(path_str.startswith(prefix) for prefix in _API_PATH_PREFIXES):
+                if any(path_str.startswith(pfx) for pfx in _API_PATH_PREFIXES):
                     continue
 
                 # Also skip if the function body contains jsonify calls (API-like)
@@ -238,7 +245,7 @@ class FlaskAnalyzer(BaseAnalyzer):
         return False
 
     def _extract_endpoints(
-        self, tree: ast.Module, source_file: str
+        self, tree: ast.Module, source_file: str, prefix: str = ""
     ) -> list[EndpointDefinition]:
         endpoints: list[EndpointDefinition] = []
 
@@ -251,6 +258,11 @@ class FlaskAnalyzer(BaseAnalyzer):
 
             path_str, methods = route_info
             func_name = node.name
+
+            # Prepend the blueprint url_prefix
+            if prefix:
+                path_str = prefix.rstrip("/") + "/" + path_str.lstrip("/")
+                path_str = "/" + path_str.lstrip("/")
 
             # Extract path parameters from <converter:name> or <name> syntax
             path_params = re.findall(r"<(?:\w+:)?(\w+)>", path_str)
@@ -268,6 +280,21 @@ class FlaskAnalyzer(BaseAnalyzer):
                 )
 
         return endpoints
+
+    @staticmethod
+    def _find_blueprint_prefix(tree: ast.Module) -> str:
+        """Find Blueprint(..., url_prefix="/...") defined in the file."""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _get_func_name(node.func) != "Blueprint":
+                continue
+            val = _get_keyword_value(node, "url_prefix")
+            if val is not None:
+                prefix = _get_string_value(val)
+                if prefix:
+                    return prefix
+        return ""
 
     @staticmethod
     def _get_route_info_from_decorators(

@@ -113,12 +113,16 @@ class FastAPIAnalyzer(BaseAnalyzer):
     def analyze_endpoints(self) -> list[EndpointDefinition]:
         endpoints: list[EndpointDefinition] = []
 
+        # Build a mapping of source file -> route prefix
+        file_prefixes = self._find_router_prefixes()
+
         for py_file in self.find_files("*.py"):
             tree = self._parse_file(py_file)
             if tree is None:
                 continue
             rel = self.relative_path(py_file)
-            endpoints.extend(self._extract_endpoints(tree, rel))
+            prefix = file_prefixes.get(rel, "")
+            endpoints.extend(self._extract_endpoints(tree, rel, prefix))
 
         return endpoints
 
@@ -196,15 +200,21 @@ class FastAPIAnalyzer(BaseAnalyzer):
         return False
 
     def _extract_endpoints(
-        self, tree: ast.Module, source_file: str
+        self, tree: ast.Module, source_file: str, prefix: str = ""
     ) -> list[EndpointDefinition]:
         endpoints: list[EndpointDefinition] = []
+
+        # Also check for APIRouter(prefix="...") defined in this file
+        if not prefix:
+            prefix = self._find_local_router_prefix(tree)
 
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             for decorator in node.decorator_list:
-                endpoint = self._parse_route_decorator(decorator, node, source_file)
+                endpoint = self._parse_route_decorator(
+                    decorator, node, source_file, prefix
+                )
                 if endpoint:
                     endpoints.append(endpoint)
 
@@ -215,6 +225,7 @@ class FastAPIAnalyzer(BaseAnalyzer):
         decorator: ast.expr,
         func_node: ast.FunctionDef | ast.AsyncFunctionDef,
         source_file: str,
+        prefix: str = "",
     ) -> EndpointDefinition | None:
         """Parse a decorator like @app.get("/path") or @router.post("/path")."""
         if not isinstance(decorator, ast.Call):
@@ -235,6 +246,11 @@ class FastAPIAnalyzer(BaseAnalyzer):
         path_str = _get_string_value(decorator.args[0])
         if path_str is None:
             return None
+
+        # Prepend the router mount prefix
+        if prefix:
+            path_str = prefix.rstrip("/") + "/" + path_str.lstrip("/")
+            path_str = "/" + path_str.lstrip("/")
 
         # Extract path parameters from {param} syntax
         path_params = re.findall(r"\{(\w+)\}", path_str)
@@ -277,6 +293,100 @@ class FastAPIAnalyzer(BaseAnalyzer):
         for kw in call.keywords:
             if kw.arg == keyword_name:
                 return kw.value
+        return None
+
+    @staticmethod
+    def _find_local_router_prefix(tree: ast.Module) -> str:
+        """Find APIRouter(prefix="/...") defined in the same file."""
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            if _get_func_name(node.func) != "APIRouter":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "prefix":
+                    val = _get_string_value(kw.value)
+                    if val:
+                        return val
+        return ""
+
+    def _find_router_prefixes(self) -> dict[str, str]:
+        """Build a mapping of source_file -> prefix from include_router() calls.
+
+        Handles patterns like:
+            from app.routers import test
+            app.include_router(test.router, prefix="/test")
+        and:
+            from app.routers.test import router as test_router
+            app.include_router(test_router, prefix="/test")
+        """
+        prefixes: dict[str, str] = {}
+
+        for py_file in self.find_files("*.py"):
+            tree = self._parse_file(py_file)
+            if tree is None:
+                continue
+
+            # Collect imports in this file: var_name -> module_path
+            imports: dict[str, str] = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module:
+                    for alias in node.names:
+                        name = alias.asname or alias.name
+                        imports[name] = node.module
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        name = alias.asname or alias.name
+                        imports[name] = alias.name
+
+            # Find include_router() calls
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                if not isinstance(node.func, ast.Attribute):
+                    continue
+                if node.func.attr != "include_router":
+                    continue
+                if not node.args:
+                    continue
+
+                # Extract prefix keyword
+                prefix_val = ""
+                for kw in node.keywords:
+                    if kw.arg == "prefix":
+                        prefix_val = _get_string_value(kw.value) or ""
+                if not prefix_val:
+                    continue
+
+                # Resolve the router arg to a source file
+                router_arg = node.args[0]
+                module_path = ""
+
+                if isinstance(router_arg, ast.Attribute):
+                    # Pattern: module.router
+                    if isinstance(router_arg.value, ast.Name):
+                        module_path = imports.get(router_arg.value.id, "")
+                elif isinstance(router_arg, ast.Name):
+                    # Pattern: router_var (imported directly)
+                    module_path = imports.get(router_arg.id, "")
+
+                if not module_path:
+                    continue
+
+                resolved = self._resolve_module_to_file(module_path)
+                if resolved:
+                    prefixes[resolved] = prefix_val
+
+        return prefixes
+
+    def _resolve_module_to_file(self, module_path: str) -> str | None:
+        """Resolve a dotted Python module path to a relative file path."""
+        parts = module_path.split(".")
+        for py_file in self.find_files("*.py"):
+            rel = self.relative_path(py_file)
+            rel_parts = Path(rel).with_suffix("").parts
+            if len(rel_parts) >= len(parts) and rel_parts[-len(parts):] == tuple(parts):
+                return rel
         return None
 
     @staticmethod
