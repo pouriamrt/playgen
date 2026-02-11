@@ -323,13 +323,20 @@ class FastAPIAnalyzer(BaseAnalyzer):
         and:
             from app.routers.test import router as test_router
             app.include_router(test_router, prefix="/test")
+
+        Also chains nested includes: if main includes router A at /api,
+        and A includes router B at /users, B gets /api/users.
         """
-        prefixes: dict[str, str] = {}
+        # First pass: collect direct include relationships
+        # included_file -> (includer_file_rel, prefix)
+        direct: dict[str, tuple[str, str]] = {}
 
         for py_file in self.find_files("*.py"):
             tree = self._parse_file(py_file)
             if tree is None:
                 continue
+
+            includer_rel = self.relative_path(py_file)
 
             # Collect imports in this file: var_name -> module_path
             imports: dict[str, str] = {}
@@ -379,7 +386,20 @@ class FastAPIAnalyzer(BaseAnalyzer):
 
                 resolved = self._resolve_module_to_file(module_path)
                 if resolved:
-                    prefixes[resolved] = prefix_val
+                    direct[resolved] = (includer_rel, prefix_val)
+
+        # Second pass: chain prefixes through the include graph
+        prefixes: dict[str, str] = {}
+        for target, (includer, prefix) in direct.items():
+            full_prefix = prefix
+            current = includer
+            visited: set[str] = {target}
+            while current in direct and current not in visited:
+                visited.add(current)
+                parent, parent_prefix = direct[current]
+                full_prefix = parent_prefix.rstrip("/") + "/" + full_prefix.lstrip("/")
+                current = parent
+            prefixes[target] = full_prefix
 
         return prefixes
 

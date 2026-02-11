@@ -25,9 +25,9 @@ _ROUTE_RE = re.compile(
     re.IGNORECASE,
 )
 
-# app.use('/prefix', someRouter)
+# app.use('/prefix', someRouter) or router.use('/prefix', someRouter)
 _ROUTER_MOUNT_RE = re.compile(
-    r"""app\s*\.\s*use\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)""",
+    r"""(\w+)\s*\.\s*use\s*\(\s*["']([^"']+)["']\s*,\s*(\w+)""",
 )
 
 # Express path param :param
@@ -214,7 +214,10 @@ class ExpressAnalyzer(BaseAnalyzer):
 
                 # Try to determine if this file has a mounted prefix
                 prefix = self._guess_prefix_for_file(fpath, mount_prefixes)
-                full_path = prefix + raw_path if prefix else raw_path
+                if prefix:
+                    full_path = prefix.rstrip("/") + "/" + raw_path.lstrip("/")
+                else:
+                    full_path = raw_path
 
                 # Normalize path
                 full_path = "/" + full_path.strip("/") if full_path != "/" else "/"
@@ -279,12 +282,14 @@ class ExpressAnalyzer(BaseAnalyzer):
         return [f for f in files if "node_modules" not in str(f)]
 
     def _find_router_mounts(self) -> dict[str, str]:
-        """Find app.use('/prefix', router) and resolve variables to file paths.
+        """Find app.use('/prefix', router) and router.use('/prefix', sub) calls.
 
-        Returns a dict mapping variable names to their mount prefixes,
-        plus a dict mapping resolved file paths to prefixes.
+        Returns a dict mapping variable names to their fully-chained mount
+        prefixes (e.g. if app mounts apiRouter at /api and apiRouter mounts
+        usersRouter at /users, usersRouter gets /api/users).
         """
-        mounts: dict[str, str] = {}
+        # direct_mounts: mounted_var -> (parent_var, prefix)
+        direct_mounts: dict[str, tuple[str, str]] = {}
         # Also build var_name -> require/import path mapping
         self._var_to_file: dict[str, str] = {}
 
@@ -316,9 +321,23 @@ class ExpressAnalyzer(BaseAnalyzer):
                     self._var_to_file[var_name] = str(resolved)
 
             for m in _ROUTER_MOUNT_RE.finditer(content):
-                prefix = m.group(1).rstrip("/")
-                var_name = m.group(2)
-                mounts[var_name] = prefix
+                parent_var = m.group(1)   # app or router variable
+                prefix = m.group(2).rstrip("/")
+                mounted_var = m.group(3)
+                direct_mounts[mounted_var] = (parent_var, prefix)
+
+        # Chain prefixes: walk from each mounted var back to the root (app)
+        mounts: dict[str, str] = {}
+        for var_name, (parent, prefix) in direct_mounts.items():
+            full_prefix = prefix
+            current = parent
+            visited: set[str] = {var_name}
+            while current in direct_mounts and current not in visited:
+                visited.add(current)
+                grandparent, grandparent_prefix = direct_mounts[current]
+                full_prefix = grandparent_prefix.rstrip("/") + "/" + full_prefix.lstrip("/")
+                current = grandparent
+            mounts[var_name] = full_prefix
 
         return mounts
 
