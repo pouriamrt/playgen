@@ -163,7 +163,7 @@ def _sample_payload(model: ModelDefinition | None) -> str:
         elif field.field_type in (FieldType.INTEGER, FieldType.NUMBER, FieldType.FLOAT):
             pairs.append(f'"{field.name}": 1')
         elif field.field_type in (FieldType.BOOLEAN,):
-            pairs.append(f'"{field.name}": true')
+            pairs.append(f'"{field.name}": True')
         elif field.field_type in (FieldType.DATE,):
             pairs.append(f'"{field.name}": "2025-01-01"')
         elif field.field_type in (FieldType.DATETIME,):
