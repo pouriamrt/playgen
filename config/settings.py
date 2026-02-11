@@ -29,7 +29,10 @@ class Settings:
     base_url: str = field(default_factory=lambda: os.getenv("BASE_URL", "http://localhost:3000"))
     api_url: str = field(default_factory=lambda: os.getenv("API_URL", "http://localhost:3000/api"))
 
-    # Credentials
+    # Auth mode: "dev" skips login (target app bypasses auth), "standard" uses credentials
+    auth_mode: str = field(default_factory=lambda: os.getenv("AUTH_MODE", "standard"))
+
+    # Credentials (ignored when auth_mode is "dev")
     admin_user: str = field(default_factory=lambda: os.getenv("ADMIN_USER", "admin@example.com"))
     admin_pass: str = field(default_factory=lambda: os.getenv("ADMIN_PASS", "admin123"))
     test_user: str = field(default_factory=lambda: os.getenv("TEST_USER", "user@example.com"))

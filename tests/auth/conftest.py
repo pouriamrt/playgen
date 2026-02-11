@@ -66,6 +66,9 @@ def fresh_user() -> dict[str, str]:
 @pytest.fixture()
 def logged_in_page(page: Page) -> Page:
     """Return a page pre-authenticated as the standard test user."""
+    if settings.auth_mode == "dev":
+        page.goto(f"{settings.base_url}/")
+        return page
     login_page = LoginPage(page)
     login_page.navigate_to_login()
     login_page.login(settings.test_user, settings.test_pass)
@@ -76,6 +79,9 @@ def logged_in_page(page: Page) -> Page:
 @pytest.fixture()
 def admin_logged_in_page(page: Page) -> Page:
     """Return a page pre-authenticated as the admin user."""
+    if settings.auth_mode == "dev":
+        page.goto(f"{settings.base_url}/")
+        return page
     login_page = LoginPage(page)
     login_page.navigate_to_login()
     login_page.login(settings.admin_user, settings.admin_pass)

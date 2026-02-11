@@ -6,10 +6,28 @@ from typing import Generator
 import pytest
 from playwright.sync_api import Page
 
+from config.settings import settings
 from utils.api_client import APIClient
 {% for imp_module, imp_class in page_imports %}
 from {{ imp_module }} import {{ imp_class }}
 {% endfor %}
+
+
+# ── Auth-aware page fixture ──────────────────────────────────────────────
+
+
+@pytest.fixture()
+def authenticated_page(page: Page) -> Page:
+    """Return an authenticated page. Skips login when AUTH_MODE=dev."""
+    if settings.auth_mode == "dev":
+        page.goto(f"{settings.base_url}/")
+        return page
+    page.goto(f"{settings.base_url}/login")
+    page.fill('[data-testid="username-input"]', settings.test_user)
+    page.fill('[data-testid="password-input"]', settings.test_pass)
+    page.click('[data-testid="login-button"]')
+    page.wait_for_url("**/dashboard**")
+    return page
 
 
 # ── Page object fixtures ─────────────────────────────────────────────────

@@ -79,8 +79,12 @@ def page(context: BrowserContext) -> Generator[Page, None, None]:
 def authenticated_page(page: Page) -> Page:
     """Return a page that is logged in as the standard test user.
 
+    When AUTH_MODE=dev the target app bypasses auth, so we skip the login flow.
     Override this fixture in your test module if the login flow differs.
     """
+    if settings.auth_mode == "dev":
+        page.goto(f"{settings.base_url}/")
+        return page
     page.goto(f"{settings.base_url}/login")
     page.fill('[data-testid="username-input"]', settings.test_user)
     page.fill('[data-testid="password-input"]', settings.test_pass)
@@ -91,7 +95,13 @@ def authenticated_page(page: Page) -> Page:
 
 @pytest.fixture()
 def admin_page(page: Page) -> Page:
-    """Return a page that is logged in as the admin user."""
+    """Return a page that is logged in as the admin user.
+
+    When AUTH_MODE=dev the target app bypasses auth, so we skip the login flow.
+    """
+    if settings.auth_mode == "dev":
+        page.goto(f"{settings.base_url}/")
+        return page
     page.goto(f"{settings.base_url}/login")
     page.fill('[data-testid="username-input"]', settings.admin_user)
     page.fill('[data-testid="password-input"]', settings.admin_pass)
