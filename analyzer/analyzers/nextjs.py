@@ -179,6 +179,9 @@ class NextjsAnalyzer(ReactAnalyzer):
                             source_file=self.relative_path(entry),
                         )
                     )
+                    file_content = self.read_file(entry)
+                    if file_content:
+                        self._enrich_page_from_content(pages[-1], file_content)
 
     def analyze_endpoints(self) -> list[EndpointDefinition]:
         """Detect API routes from App Router and Pages Router."""

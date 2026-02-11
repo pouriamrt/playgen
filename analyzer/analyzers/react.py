@@ -90,6 +90,8 @@ _JSX_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 
+_DATA_TESTID_RE = re.compile(r"""data-testid\s*=\s*["']([^"']+)["']""")
+
 # Submit button patterns
 _SUBMIT_BTN_RE = re.compile(
     r"""<button\b([^>]*)type\s*=\s*["']submit["']([^>]*)>([^<]*)</button>""",
@@ -318,6 +320,7 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=rel,
                         )
                     )
+                    self._enrich_page_from_content(pages[-1], content)
 
             # v5 reversed attribute order
             for m in _ROUTE_V5_REV_RE.finditer(content):
@@ -332,6 +335,7 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=rel,
                         )
                     )
+                    self._enrich_page_from_content(pages[-1], content)
 
             # v6 style: <Route path="/x" element={<Comp />} />
             for m in _ROUTE_V6_RE.finditer(content):
@@ -346,6 +350,7 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=rel,
                         )
                     )
+                    self._enrich_page_from_content(pages[-1], content)
 
             # v6 reversed
             for m in _ROUTE_V6_REV_RE.finditer(content):
@@ -360,6 +365,7 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=rel,
                         )
                     )
+                    self._enrich_page_from_content(pages[-1], content)
 
             # v6.4+ createBrowserRouter / createHashRouter object syntax
             for m in _CREATE_ROUTER_ROUTE_RE.finditer(content):
@@ -374,6 +380,7 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=rel,
                         )
                     )
+                    self._enrich_page_from_content(pages[-1], content)
 
             for m in _CREATE_ROUTER_ROUTE_REV_RE.finditer(content):
                 component, path = m.group(1), m.group(2)
@@ -387,6 +394,7 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=rel,
                         )
                     )
+                    self._enrich_page_from_content(pages[-1], content)
 
     def _scan_nextjs_pages(
         self, pages: list[PageDefinition], seen: set[str]
@@ -459,6 +467,9 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=self.relative_path(entry),
                         )
                     )
+                    file_content = self.read_file(entry)
+                    if file_content:
+                        self._enrich_page_from_content(pages[-1], file_content)
 
     def _collect_nextjs_app_routes(
         self,
@@ -509,6 +520,9 @@ class ReactAnalyzer(BaseAnalyzer):
                             source_file=self.relative_path(entry),
                         )
                     )
+                    file_content = self.read_file(entry)
+                    if file_content:
+                        self._enrich_page_from_content(pages[-1], file_content)
 
     def _extract_form_fields(self, form_body: str) -> list[FormField]:
         """Extract form fields from HTML/JSX form body."""
@@ -678,3 +692,16 @@ class ReactAnalyzer(BaseAnalyzer):
             if text and text not in headings:
                 headings.append(text)
         return headings
+
+    def _enrich_page_from_content(self, page: PageDefinition, content: str) -> None:
+        """Populate test_ids, interactive_elements, and title from file content."""
+        test_ids = _DATA_TESTID_RE.findall(content)
+        if test_ids:
+            page.test_ids = list(dict.fromkeys(test_ids))  # dedupe, preserve order
+        elements = self._extract_jsx_interactive_elements(content)
+        if elements:
+            page.interactive_elements = elements
+        if not page.title:
+            headings = self._extract_jsx_headings(content)
+            if headings:
+                page.title = headings[0]

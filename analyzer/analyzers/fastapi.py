@@ -204,9 +204,13 @@ class FastAPIAnalyzer(BaseAnalyzer):
     ) -> list[EndpointDefinition]:
         endpoints: list[EndpointDefinition] = []
 
-        # Also check for APIRouter(prefix="...") defined in this file
-        if not prefix:
-            prefix = self._find_local_router_prefix(tree)
+        # Combine include_router prefix with local APIRouter prefix
+        include_prefix = prefix
+        local_prefix = self._find_local_router_prefix(tree)
+        if include_prefix and local_prefix:
+            prefix = include_prefix.rstrip("/") + "/" + local_prefix.lstrip("/")
+        elif local_prefix:
+            prefix = local_prefix
 
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
